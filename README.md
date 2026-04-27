@@ -48,12 +48,25 @@ Monitor the CRM and trigger the retention pipeline:
 streamlit run app.py
 ```
 
-## 🧠 Agent Configuration
+## 🧠 Agent Configuration (Brain)
 
-To connect this to **Google Cloud Agent Builder**:
-1.  **Tools**: Add a new MCP tool pointing to your ngrok URL.
-2.  **Goal**: "You are a Senior Retention Strategist. Your goal is to analyze customer data daily, identify segments, and take immediate action to retain them."
-3.  **Instructions**: "Use `get_customers` to see the base, `segment_customers` to categorize them, and then use `generate_discount` or `flag_vip` based on the classification."
+To connect this to **Google Cloud Agent Builder**, use the following configuration:
+
+- **Persona**: Senior Retention Strategist.
+- **Workflow**:
+    1. **Analyze**: Call `get_customers` to ingest the latest CRM data.
+    2. **Segment**: Call `segment_customers` to classify the database into **Champions, Loyal, Big Spenders,** and **At Risk**.
+    3. **Act**:
+        - For **At Risk** customers, call `generate_discount` followed by `draft_email`.
+        - For **Big Spenders**, call `flag_vip` followed by `draft_email`.
+    4. **Report**: Summarize the actions taken and the potential revenue impact.
+
+## 🎬 The "Golden Path" Demo
+
+1. **The Problem**: Open the dashboard to show 50 "Unassigned" customers (run `python crm_init.py` first).
+2. **The Intervention**: In the Agent chat, say: *"It's Monday morning. Run our retention strategy."*
+3. **The Magic**: Watch the terminal/logs show the `initialize` → `tools/list` → `tools/call` sequence as Gemini reasons through the data.
+4. **The Result**: Refresh the dashboard to see the new segments, generated discount codes, and VIP flags in real-time.
 
 ---
 *Created for the Hackathon - Automating Retention with Agentic AI.*

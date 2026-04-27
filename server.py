@@ -65,6 +65,21 @@ def flag_vip_customer(customer_id: int):
     conn.close()
     return {"status": "success", "customer_id": customer_id, "message": "Flagged as VIP"}
 
+def draft_email_logic(customer_id: int, segment: str):
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT name, discount_code FROM customers WHERE customer_id = ?", (customer_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    name, code = row if row else ("Valued Customer", None)
+    
+    if segment == "At Risk":
+        return f"Subject: We miss you, {name}! | Here is {code} for 20% off."
+    elif segment == "Big Spenders":
+        return f"Subject: VIP Access for {name} | Join our exclusive launch."
+    return f"Subject: A special thanks to our {segment} customer!"
+
 # --- MCP HUB (THE JSON-RPC HANDSHAKE) ---
 
 @app.post("/")
@@ -123,6 +138,18 @@ async def mcp_hub(request: dict):
                             "properties": {"customer_id": {"type": "integer"}},
                             "required": ["customer_id"]
                         }
+                    },
+                    {
+                        "name": "draft_email",
+                        "description": "Draft a personalized email for a customer based on their segment",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "customer_id": {"type": "integer"},
+                                "segment": {"type": "string"}
+                            },
+                            "required": ["customer_id", "segment"]
+                        }
                     }
                 ]
             }
@@ -142,6 +169,8 @@ async def mcp_hub(request: dict):
             result = generate_discount_code(args.get("customer_id"))
         elif tool_name == "flag_vip":
             result = flag_vip_customer(args.get("customer_id"))
+        elif tool_name == "draft_email":
+            result = draft_email_logic(args.get("customer_id"), args.get("segment"))
         else:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Tool not found"}}
 

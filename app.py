@@ -143,22 +143,25 @@ def run_retention_pipeline():
     # Action 3: Autonomous Execution
     add_log("Action 3: Executing Targeted Retention Strategies...")
     
-    at_risk = df[df['recency'] > 90]
+    at_risk = df[df['recency'] > 60]
     for idx, row in at_risk.head(5).iterrows():
         code = f"WINBACK20-{idx}X99"
         conn.execute("UPDATE customers SET discount_code = ? WHERE customer_id = ?", (code, row['customer_id']))
         add_log(f"Tool Call: generate_discount_code(id={row['customer_id']}) -> {code}", "action")
+        add_log(f"Tool Call: draft_email(id={row['customer_id']}, segment='At Risk') -> Subject: We miss you...", "action")
         
     big_spenders = df[df['total_spend'] >= 1500]
     for idx, row in big_spenders.head(3).iterrows():
         conn.execute("UPDATE customers SET vip_flag = 1 WHERE customer_id = ?", (row['customer_id'],))
         add_log(f"Tool Call: flag_vip_customer(id={row['customer_id']}) -> Success", "action")
+        add_log(f"Tool Call: draft_email(id={row['customer_id']}, segment='Big Spenders') -> Subject: VIP Access...", "action")
 
     conn.commit()
     conn.close()
     add_log("Pipeline Run Finished. Database updated.", "success")
     st.balloons()
-    time.sleep(1)
+    time.sleep(2)
+    st.session_state.running = False
     st.rerun()
 
 # --- UI LAYOUT ---
