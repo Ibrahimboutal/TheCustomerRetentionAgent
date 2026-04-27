@@ -124,16 +124,15 @@ def run_retention_pipeline():
     
     segments = []
     for idx, row in df.iterrows():
+        # Updated strictly for 4 segments
         if row['recency'] <= 30 and row['purchase_count'] >= 10 and row['total_spend'] >= 1000:
             segment = "Champions"
-        elif row['purchase_count'] >= 5 and row['recency'] <= 60:
-            segment = "Loyal"
         elif row['total_spend'] >= 1500:
             segment = "Big Spenders"
-        elif row['recency'] > 90:
+        elif row['recency'] > 60:  # Catch-all for older inactive users
             segment = "At Risk"
         else:
-            segment = "Standard"
+            segment = "Loyal"      # Default fallback for active, regular users
         
         segments.append(segment)
         conn.execute("UPDATE customers SET segment = ? WHERE customer_id = ?", (segment, row['customer_id']))
@@ -204,16 +203,16 @@ with tab1:
         fig = px.pie(df, names='segment', title='Customer Segments Distribution', 
                      color_discrete_sequence=px.colors.qualitative.Prism)
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#E0AAFF")
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, width='stretch')
     
     with c2:
         fig2 = px.scatter(df, x='purchase_count', y='total_spend', color='segment',
                          size='total_spend', hover_name='name', title='Spend vs Frequency by Segment')
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#E0AAFF")
-        st.plotly_chart(fig2, use_container_width=True)
+        st.plotly_chart(fig2, width='stretch')
 
 with tab2:
-    st.dataframe(df.style.background_gradient(subset=['total_spend'], cmap='Purples'), use_container_width=True)
+    st.dataframe(df.style.background_gradient(subset=['total_spend'], cmap='Purples'), width='stretch')
 
 with tab3:
     log_area = st.empty()
