@@ -3,7 +3,9 @@ import random
 from datetime import datetime, timedelta
 
 def init_db():
-    conn = sqlite3.connect('mock_crm.db')
+    import os
+    db_path = os.path.join(os.path.dirname(__file__), 'mock_crm.db')
+    conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
     # Create Customers table

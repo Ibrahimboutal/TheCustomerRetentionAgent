@@ -101,7 +101,8 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-DB_PATH = "mock_crm.db"
+import os
+DB_PATH = os.path.join(os.path.dirname(__file__), "mock_crm.db")
 
 def load_data():
     conn = sqlite3.connect(DB_PATH)

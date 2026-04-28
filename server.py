@@ -12,7 +12,9 @@ from sklearn.preprocessing import StandardScaler
 # Initialize FastAPI app
 app = FastAPI(title="Retention CRM MCP Server", version="1.0.0")
 
-DB_PATH = "mock_crm.db"
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_PATH = os.path.join(BASE_DIR, "mock_crm.db")
 
 def get_db_connection():
     return sqlite3.connect(DB_PATH)
