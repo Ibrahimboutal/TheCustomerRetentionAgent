@@ -69,6 +69,9 @@ def init_db():
             last_purchase = today - timedelta(days=random.randint(90, 200))
             count = random.randint(2, 10)
             spend = random.uniform(100, 1000)
+            # Inject "Poison Pill": Missing email for first At Risk customer
+            if not any(c[2] is None for c in customers):
+                email = None
 
         customers.append((
             i, name, email, 

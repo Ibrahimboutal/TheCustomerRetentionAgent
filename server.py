@@ -81,17 +81,53 @@ def flag_vip_customer(customer_id: int):
 def draft_email_logic(customer_id: int, segment: str):
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT name, discount_code FROM customers WHERE customer_id = ?", (customer_id,))
+    cursor.execute("SELECT name, email, discount_code FROM customers WHERE customer_id = ?", (customer_id,))
     row = cursor.fetchone()
     conn.close()
     
-    name, code = row if row else ("Valued Customer", None)
+    if not row:
+        return {"status": "error", "message": "Customer not found"}
+        
+    name, email, code = row
+    
+    if not email or email.strip() == "":
+        return {"status": "error", "message": "Email missing. Cannot send."}
     
     if segment == "At Risk":
         return f"Subject: We miss you, {name}! | Here is {code} for 20% off."
     elif segment == "Big Spenders":
         return f"Subject: VIP Access for {name} | Join our exclusive launch."
     return f"Subject: A special thanks to our {segment} customer!"
+
+def simulate_revenue_impact(segment: str, discount_rate: float):
+    conn = get_db_connection()
+    df = pd.read_sql_query("SELECT total_spend FROM customers WHERE segment = ?", conn, params=(segment,))
+    conn.close()
+    
+    if df.empty:
+        return {"error": f"No customers found in segment '{segment}'"}
+    
+    baseline = df['total_spend'].sum()
+    discount_cost = baseline * discount_rate
+    # Heuristic: 30% retention lift in Lifetime Value
+    projected_revenue = (baseline - discount_cost) * 1.3
+    
+    return {
+        "segment": segment,
+        "baseline_revenue": round(baseline, 2),
+        "discount_applied": f"{int(discount_rate*100)}%",
+        "projected_revenue": round(projected_revenue, 2),
+        "roi_lift": f"{round(((projected_revenue - baseline) / baseline) * 100, 1)}%"
+    }
+
+def flag_for_sms_campaign(customer_id: int):
+    """Fallback tool when email is missing."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("UPDATE customers SET segment = 'SMS-Pending' WHERE customer_id = ?", (customer_id,))
+    conn.commit()
+    conn.close()
+    return {"status": "success", "customer_id": customer_id, "message": "Added to SMS queue"}
 
 # --- MCP HUB (THE JSON-RPC HANDSHAKE) ---
 
@@ -163,6 +199,27 @@ async def mcp_hub(request: dict):
                             },
                             "required": ["customer_id", "segment"]
                         }
+                    },
+                    {
+                        "name": "flag_for_sms",
+                        "description": "Fallback: Flag a customer for SMS campaign if email fails",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"customer_id": {"type": "integer"}},
+                            "required": ["customer_id"]
+                        }
+                    },
+                    {
+                        "name": "simulate_revenue",
+                        "description": "Calculate the ROI of a retention campaign for a specific segment",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "segment": {"type": "string"},
+                                "discount_rate": {"type": "number", "description": "e.g., 0.2 for 20%"}
+                            },
+                            "required": ["segment", "discount_rate"]
+                        }
                     }
                 ]
             }
@@ -184,6 +241,10 @@ async def mcp_hub(request: dict):
             result = flag_vip_customer(args.get("customer_id"))
         elif tool_name == "draft_email":
             result = draft_email_logic(args.get("customer_id"), args.get("segment"))
+        elif tool_name == "flag_for_sms":
+            result = flag_for_sms_campaign(args.get("customer_id"))
+        elif tool_name == "simulate_revenue":
+            result = simulate_revenue_impact(args.get("segment"), args.get("discount_rate"))
         else:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Tool not found"}}
 

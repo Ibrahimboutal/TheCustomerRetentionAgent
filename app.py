@@ -84,6 +84,19 @@ st.markdown("""
         border-radius: 0 10px 10px 0;
         font-family: 'Courier New', Courier, monospace;
         margin-bottom: 10px;
+        line-height: 1.4;
+    }
+    
+    .marketing-voice {
+        color: #FF79C6;
+        font-weight: bold;
+        border-bottom: 1px solid #FF79C6;
+    }
+    
+    .finance-voice {
+        color: #F1FA8C;
+        font-weight: bold;
+        border-bottom: 1px solid #F1FA8C;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -152,6 +165,22 @@ with tab1:
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#E0AAFF")
         st.plotly_chart(fig2, width='stretch')
 
+    st.write("### 💰 ROI Projection: AI Retention Strategy")
+    # Heuristic calculation for the chart
+    at_risk_revenue = df[df['segment'] == 'At Risk']['total_spend'].sum()
+    if at_risk_revenue > 0:
+        roi_data = pd.DataFrame({
+            'Category': ['Current Revenue', 'Projected (With AI)'],
+            'Amount': [at_risk_revenue, at_risk_revenue * 1.3]
+        })
+        fig3 = px.bar(roi_data, x='Category', y='Amount', color='Category',
+                     title='Projected ROI for "At Risk" Segment (30% Lift)',
+                     color_discrete_map={'Current Revenue': '#7B2CBF', 'Projected (With AI)': '#4DFF88'})
+        fig3.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#E0AAFF")
+        st.plotly_chart(fig3, width='stretch')
+    else:
+        st.info("Run the segmentation to see ROI projections.")
+
 with tab2:
     st.dataframe(df.style.background_gradient(subset=['total_spend'], cmap='Purples'), width='stretch')
 
@@ -170,12 +199,17 @@ with tab3:
         st.write("No agent activity recorded yet. Waiting for Google AI Agent to call tools...")
     else:
         for idx, row in agent_logs.iterrows():
+            content = row['result']
+            # Highlight boardroom debate voices
+            content = content.replace("Marketing:", "<span class='marketing-voice'>Marketing:</span>")
+            content = content.replace("Finance:", "<span class='finance-voice'>Finance:</span>")
+            
             st.markdown(f"""
             <div class='log-container'>
                 <span style='color: #9D4EDD;'>[{row['timestamp']}]</span> 
                 <b>{row['tool_name']}</b><br>
                 <small>Args: {row['arguments']}</small><br>
-                <span style='color: #4DFF88;'>Result: {row['result']}</span>
+                <span style='color: #4DFF88;'>Result: {content}</span>
             </div>
             """, unsafe_allow_html=True)
 
