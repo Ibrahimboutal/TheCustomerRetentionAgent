@@ -4,14 +4,18 @@ import sqlite3
 import os
 
 # Configuration
-SERVER_URL = "http://127.0.0.1:8000"
-DB_PATH = os.path.join(os.path.dirname(__file__), "mock_crm.db")
+import sys
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
+DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
 
 def test_constraint_adherence():
     """Test if the Rules Engine blocks a greedy agent."""
     print("TEST 1: Constraint Adherence (Financial Safety)")
     
-    import server
+    from api import server
     
     # Customer #1
     result = server.generate_discount_code(1, requested_rate=0.95)
@@ -26,7 +30,7 @@ def test_hallucination_prevention():
     """Test if the agent handles missing support history gracefully."""
     print("TEST 2: Hallucination Prevention (Data Integrity)")
     
-    import server
+    from api import server
     result = server.search_support_history(10)
     
     if result['status'] == 'empty':
@@ -38,7 +42,7 @@ def test_decision_consistency():
     """Test if the ML model provides consistent probabilities."""
     print("TEST 3: Decision Consistency (Deterministic ML)")
     
-    import server
+    from api import server
     p1 = server.get_customers()[0]['churn_probability']
     p2 = server.get_customers()[0]['churn_probability']
     

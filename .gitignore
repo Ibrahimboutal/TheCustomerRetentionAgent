@@ -5,35 +5,19 @@ __pycache__/
 *.so
 .Python
 env/
-build/
-develop-eggs/
-dist/
-downloads/
-eggs/
-.eggs/
-lib/
-lib64/
-parts/
-sdist/
-var/
-wheels/
-*.egg-info/
-.installed.cfg
-*.egg
+venv/
+.venv/
 
-# Database
-mock_crm.db
+# Data & Database
+data/*.db
 
 # ML Artifacts
-*.pkl
-churn_training_data.csv
-*.png
+ml/*.pkl
+ml/*.csv
+ml/*.png
 
 # Environment
 .env
-.venv
-venv/
-ENV/
 
 # Tools
 ngrok.exe

@@ -14,18 +14,27 @@ from sklearn.preprocessing import StandardScaler as SkScaler
 app = FastAPI(title="Retention CRM MCP Server", version="1.0.0")
 
 import os
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_PATH = os.path.join(BASE_DIR, "mock_crm.db")
+import sys
+
+# Ensure the project root is in the path for cross-module imports
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
+DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
+ML_DIR = os.path.join(BASE_DIR, "ml")
+
+from agent.decision_engine import DecisionEngine
 
 # --- LOAD PRODUCTION ML MODEL ---
 try:
-    with open(os.path.join(BASE_DIR, 'churn_model.pkl'), 'rb') as f:
+    with open(os.path.join(ML_DIR, 'churn_model.pkl'), 'rb') as f:
         CHURN_MODEL = pickle.load(f)
-    with open(os.path.join(BASE_DIR, 'scaler.pkl'), 'rb') as f:
+    with open(os.path.join(ML_DIR, 'scaler.pkl'), 'rb') as f:
         SCALER = pickle.load(f)
-    with open(os.path.join(BASE_DIR, 'feature_names.pkl'), 'rb') as f:
+    with open(os.path.join(ML_DIR, 'feature_names.pkl'), 'rb') as f:
         FEATURE_NAMES = pickle.load(f)
-    print("DONE: Production ML Model loaded successfully.")
+    print("DONE: Production ML Model loaded successfully from /ml.")
 except Exception as e:
     CHURN_MODEL = None
     print(f"WARN: Could not load ML model: {e}")
@@ -158,21 +167,14 @@ def generate_discount_code(customer_id: int, requested_rate: float = 0.2):
         customer['login_frequency'], customer['payment_failures'], 
         customer['total_spend'], recency
     ]], columns=FEATURE_NAMES)
-    
     risk = CHURN_MODEL.predict_proba(SCALER.transform(features))[0, 1]
     
-    # 2. ENFORCE RULES
-    # - If Risk > 70% and LTV > 1000 -> Max 20%
-    # - If Risk < 30% -> Max 5% (Don't waste money)
-    # - Otherwise -> Max 10%
+    # 2. ENFORCE RULES VIA DECISION ENGINE
+    eval_result = DecisionEngine.validate_action(
+        customer['name'], requested_rate, risk, customer['total_spend']
+    )
     
-    max_allowed = 0.10
-    if risk > 0.7 and customer['total_spend'] > 1000:
-        max_allowed = 0.20
-    elif risk < 0.3:
-        max_allowed = 0.05
-    
-    final_rate = min(requested_rate, max_allowed)
+    final_rate = float(eval_result['approved_rate'].replace('%', '')) / 100.0
     
     code = f"SAVE{int(final_rate*100)}-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     cursor = conn.cursor()
@@ -194,9 +196,12 @@ def generate_discount_code(customer_id: int, requested_rate: float = 0.2):
         "status": "success", 
         "customer_id": customer_id, 
         "code": code,
-        "applied_rate": f"{int(final_rate*100)}%",
-        "rules_engine_note": f"Requested {int(requested_rate*100)}%, but Rules Engine capped at {int(max_allowed*100)}% based on Churn Risk ({int(risk*100)}%)."
+        "applied_rate": eval_result['approved_rate'],
+        "decision_engine_note": eval_result['justification'],
+        "churn_risk_score": eval_result['churn_risk_score'],
+        "was_capped": eval_result['was_capped']
     }
+   
 
 def check_discount_eligibility(customer_id: int):
     """Business Guardrail: Check if a customer is eligible for a new discount."""

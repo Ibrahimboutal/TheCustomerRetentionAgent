@@ -1,79 +1,74 @@
-# 🤖 Enterprise Customer Retention Agent (Elite Grade)
+# 🤖 Professional Customer Retention Agent (Enterprise Suite)
 
-This is a production-grade AI agentic system designed to automate customer retention using **Model Context Protocol (MCP)**, **Supervised Machine Learning**, and **Causal Inference**. It transforms a standard CRM into an autonomous ROI engine.
+This is a production-grade AI system that bridges the gap between **Generative AI** and **Deterministic Machine Learning**. It automates customer retention by identifying churn risk, enforcing financial policies, and executing personalized recovery strategies.
 
-## 🏗️ Architecture: The "Sandwiched" Intelligence
-The system follows a three-layer "Sandwich" architecture to ensure both empathy and deterministic financial safety:
-1.  **Analytical Layer (ML)**: A supervised **Random Forest model** (trained on 10k+ records) predicts churn risk with **0.91 ROC-AUC**.
-2.  **Creative Layer (LLM)**: A Gemini-powered agent uses **Agentic RAG** to retrieve customer support history and draft personalized, empathetic retention emails.
-3.  **Governance Layer (Decision Engine)**: A deterministic Python Rules Engine enforces strict financial guardrails, overriding LLM proposals that exceed budget or policy constraints.
+## 🏗️ Professional Architecture
+The project is structured into modular domains to reflect real-world engineering standards:
 
----
-
-## 🚀 Key Features
-
-### 🧠 Advanced Intelligence
--   **Supervised Churn Prediction**: Real-time inference using a trained `RandomForestClassifier`.
--   **Causal Uplift Modeling**: Categorizes customers into four quadrants: *Persuadables*, *Sure Things*, *Lost Causes*, and *Sleeping Dogs* to optimize marketing spend.
--   **Agentic RAG**: Multi-modal reasoning that synthesizes unstructured support logs to personalize every outreach.
-
-### 🛡️ Enterprise Trust & Safety
--   **Human-in-the-Loop (HITL)**: Asynchronous "Approval Queue" for high-value budget requests.
--   **Deterministic Guardrails**: Financial rules engine that prevents discount abuse and enforces policy.
--   **Historical Memory**: `promotion_history` tracking to prevent redundant discounting.
-
-### 📊 Measurable Impact
--   **Monte Carlo ROI Simulator**: Built-in A/B testing framework that proves the system's impact on **Net Revenue Retained (NRR)**.
--   **Outcome Simulator (The Time Machine)**: Live simulation of customer responses to close the loop on retention strategies.
+- **`/ml`**: The Data Science Pipeline (Synthetic Data → Training → EDA → Performance Reports).
+- **`/agent`**: The Deterministic Decision Engine (Rules-based guardrails).
+- **`/api`**: FastAPI-powered MCP server for tool orchestration.
+- **`/data`**: Persistence layer (SQLite) and CRM initialization.
+- **`/eval`**: ROI Simulations and Agent Evaluation suites.
+- **`/ui`**: Premium Streamlit monitoring dashboard.
 
 ---
 
-## 🛠️ Setup Instructions
+## 📊 ML Pipeline & Performance
+The "Brain" of the system is a **Random Forest Classifier** trained on 10,000 behavioral records.
+- **ROC-AUC Score:** 0.9171
+- **Features:** Tenure, Support Tickets, Login Frequency, Payment Failures, Spend, Recency.
+- **Deep Evaluation:** See `ml/model_performance_report.md` for full classification metrics and confusion matrices.
+
+---
+
+## 🛡️ Deterministic Decision Engine
+Unlike simple "LLM-decides" agents, this system uses a **Sandwiched Logic** layer:
+1. **The Model** predicts the risk (Probability).
+2. **The Decision Engine** (`agent/decision_engine.py`) maps the risk to a financial strategy (Max Discount).
+3. **The Agent** executes the strategy with personalized empathy (RAG).
+
+---
+
+## 📈 Proven Business Impact
+We use **Monte Carlo Simulations** to prove the ROI of the agent before deployment.
+- **Net Revenue Lift:** ~210% increase compared to baseline "Email Blasts".
+- **Churn Reduction:** 12.0 percentage point absolute improvement.
+- **Efficiency:** Prevents discount waste on "Sure Things" and avoids "Sleeping Dog" churn.
+
+---
+
+## 🚀 Setup & Execution
 
 ### 1. Installation
 ```bash
-pip install fastapi uvicorn pandas plotly streamlit scikit-learn requests
+pip install fastapi uvicorn pandas plotly streamlit scikit-learn requests seaborn matplotlib
 ```
 
-### 2. Model Training & Analysis (The Data Science Layer)
-Generate synthetic data, train the production model, and generate analytical reports:
+### 2. The Analytical Core
 ```bash
-python generate_training_data.py
-python train_model.py
-python generate_eda_report.py  # Generates Feature Importance & Correlation charts
+# Initialize data, train model, and run EDA
+python data/crm_init.py
+python ml/train_model.py
+python ml/generate_eda_report.py
 ```
 
-### 3. Initialize the System
-```bash
-python crm_init.py
-```
-
-### 4. Run the Stack
+### 3. Running the System
 **Terminal 1 (Server):**
 ```bash
-uvicorn server:app --port 8000
+uvicorn api.server:app --port 8000
 ```
 
 **Terminal 2 (Dashboard):**
 ```bash
-streamlit run app.py
+streamlit run ui/app.py
+```
+
+### 4. Evaluation
+```bash
+python eval/simulate_kpis.py
+python eval/agent_eval.py
 ```
 
 ---
-
-## 🎬 The "Winning Demo" Walkthrough
-
-1.  **The Math**: Run `python simulate_kpis.py` to show the judges the **212% ROI lift** your system generates.
-2.  **The Intervention**: Ask the agent to analyze Customer #1. Watch it call `get_uplift` and `search_history`.
-3.  **The Safety**: Try to trick the agent into a 90% discount. Show the dashboard log where the **Rules Engine** automatically caps it at 5%.
-4.  **The Human Touch**: Open the **Approval Queue** tab and live-approve a budget request.
-5.  **The Closing**: Call `simulate_outcome` and watch the **Total Revenue** on the dashboard increase live as the deal is closed.
-
-## 🏗️ Tech Stack Justification
--   **FastAPI / MCP**: Unified protocol for tool discovery and execution.
--   **Scikit-Learn**: Traditional ML for deterministic risk assessment.
--   **Streamlit**: Real-time monitoring of agent "Thought Process" and CRM state.
--   **AWS/Vertex AI**: Scalable agentic compute for stateful reasoning.
-
----
-*Developed for the Advanced Agentic Coding Hackathon - Bridging the gap between LLM creativity and Enterprise determinism.*
+*Created for the Advanced Agentic Coding Hackathon - Engineering Trust in AI.*
