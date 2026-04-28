@@ -46,6 +46,39 @@ def init_db():
     )
     ''')
 
+    # Create Approvals table (HITL)
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS approvals (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER,
+        requested_amount REAL,
+        status TEXT DEFAULT 'pending',
+        timestamp TEXT,
+        FOREIGN KEY (customer_id) REFERENCES customers (customer_id)
+    )
+    ''')
+
+    # Create Support Logs table (RAG)
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS support_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER,
+        transcript TEXT,
+        date TEXT,
+        FOREIGN KEY (customer_id) REFERENCES customers (customer_id)
+    )
+    ''')
+
+    # Seed some fake support complaints
+    complaints = [
+        (1, "The shipping was delayed by 2 weeks and nobody notified me.", "2024-04-20"),
+        (2, "My app keeps crashing when I try to add a new card.", "2024-04-22"),
+        (3, "I was double charged for my last subscription renewal.", "2024-04-18"),
+        (5, "The product I received was damaged during transit.", "2024-04-25"),
+        (8, "I want to cancel my subscription but the button isn't working.", "2024-04-26")
+    ]
+    cursor.executemany("INSERT INTO support_logs (customer_id, transcript, date) VALUES (?, ?, ?)", complaints)
+
     # Sample Names
     first_names = ["James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "William", "Elizabeth"]
     last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]

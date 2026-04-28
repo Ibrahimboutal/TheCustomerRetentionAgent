@@ -155,7 +155,7 @@ with col4:
 st.write("---")
 
 # Main Content
-tab1, tab2, tab3 = st.tabs(["📊 Segmentation Analytics", "👥 Customer Database", "🧠 Agent Thought Process"])
+tab1, tab2, tab3, tab4 = st.tabs(["📊 Segmentation Analytics", "👥 Customer Database", "🧠 Agent Thought Process", "🔐 Approval Queue"])
 
 with tab1:
     c1, c2 = st.columns(2)
@@ -218,6 +218,42 @@ with tab3:
                 <span style='color: #4DFF88;'>Result: {content}</span>
             </div>
             """, unsafe_allow_html=True)
+
+with tab4:
+    st.markdown("### 🔐 Pending Budget Approvals")
+    st.info("The AI Agent has paused and is requesting budget for high-value discounts.")
+    
+    conn = sqlite3.connect(DB_PATH)
+    approvals_df = pd.read_sql_query("""
+        SELECT a.id, c.name, a.requested_amount, a.status, a.timestamp 
+        FROM approvals a 
+        JOIN customers c ON a.customer_id = c.customer_id
+        WHERE a.status = 'pending'
+        ORDER BY a.timestamp DESC
+    """, conn)
+    
+    if approvals_df.empty:
+        st.success("No pending approvals. The agent is free to execute standard strategies.")
+    else:
+        for idx, row in approvals_df.iterrows():
+            col_a, col_b, col_c = st.columns([2, 1, 1])
+            with col_a:
+                st.markdown(f"**{row['name']}** requested **${row['requested_amount']}**")
+                st.caption(f"Request ID: {row['id']} | Time: {row['timestamp']}")
+            with col_b:
+                if st.button(f"✅ Approve #{row['id']}", key=f"app_{row['id']}"):
+                    conn.execute("UPDATE approvals SET status = 'approved' WHERE id = ?", (row['id'],))
+                    conn.commit()
+                    st.toast(f"Budget approved for {row['name']}!")
+                    st.rerun()
+            with col_c:
+                if st.button(f"❌ Reject #{row['id']}", key=f"rej_{row['id']}"):
+                    conn.execute("UPDATE approvals SET status = 'rejected' WHERE id = ?", (row['id'],))
+                    conn.commit()
+                    st.toast(f"Budget rejected for {row['name']}.")
+                    st.rerun()
+            st.divider()
+    conn.close()
 
 # Footer
 st.markdown("<br><p style='text-align: center; color: #5A189A;'>Hackathon Prototype - Customer Retention Agent v1.0</p>", unsafe_allow_html=True)

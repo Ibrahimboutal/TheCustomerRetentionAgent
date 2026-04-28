@@ -176,6 +176,72 @@ def flag_vip_customer(customer_id: int):
         
     return {"status": "success", "customer_id": customer_id, "message": f"Flagged {name} as VIP and triggered notification."}
 
+def request_budget_approval(customer_id: int, amount: float):
+    """HITL: Request human approval for a specific retention budget."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute(
+        "INSERT INTO approvals (customer_id, requested_amount, timestamp) VALUES (?, ?, ?)",
+        (customer_id, amount, timestamp)
+    )
+    request_id = cursor.lastrowid
+    conn.commit()
+    conn.close()
+    return {"status": "pending", "request_id": request_id, "message": f"Budget of ${amount} submitted for human review."}
+
+def check_approval_status(request_id: int):
+    """HITL: Check if the human has approved the budget yet."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT status FROM approvals WHERE id = ?", (request_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row:
+        return {"status": "error", "message": "Request ID not found."}
+    return {"status": row[0]}
+
+def search_support_history(customer_id: int):
+    """Agentic RAG: Retrieve unstructured support logs for personalization."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT transcript, date FROM support_logs WHERE customer_id = ?", (customer_id,))
+    rows = cursor.fetchall()
+    conn.close()
+    
+    if not rows:
+        return {"status": "empty", "message": "No previous support tickets found."}
+    return {"status": "success", "logs": [{"date": r[1], "transcript": r[0]} for r in rows]}
+
+def run_uplift_modeling(customer_id: int):
+    """Causal Inference: Determine the causal impact of a discount."""
+    # Heuristic based on recency and past behavior
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    cursor.execute("SELECT recency, purchase_count FROM customers WHERE customer_id = ?", (customer_id,))
+    row = cursor.fetchone()
+    conn.close()
+    
+    if not row: return {"error": "Customer not found"}
+    recency, count = row
+    
+    # Causal Heuristic
+    if recency > 90 and count < 3:
+        quadrant = "Lost Causes"
+        advice = "Low probability of retention. Do not waste budget."
+    elif recency <= 30:
+        quadrant = "Sure Things"
+        advice = "Will stay anyway. Offering a discount reduces margins unnecessarily."
+    elif 30 < recency <= 90:
+        quadrant = "Persuadables"
+        advice = "High Causal Uplift! A discount here is likely to prevent churn."
+    else:
+        quadrant = "Sleeping Dogs"
+        advice = "Risky. Contacting them might remind them to cancel."
+        
+    return {"customer_id": customer_id, "uplift_quadrant": quadrant, "recommendation": advice}
+
 def draft_email_logic(customer_id: int, segment: str):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -327,6 +393,45 @@ async def mcp_hub(request: dict):
                             "properties": {"customer_id": {"type": "integer"}},
                             "required": ["customer_id"]
                         }
+                    },
+                    {
+                        "name": "request_approval",
+                        "description": "HITL: Request human budget approval for a high-value discount",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {
+                                "customer_id": {"type": "integer"},
+                                "amount": {"type": "number"}
+                            },
+                            "required": ["customer_id", "amount"]
+                        }
+                    },
+                    {
+                        "name": "get_approval_status",
+                        "description": "HITL: Check if a pending budget request has been approved",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"request_id": {"type": "integer"}},
+                            "required": ["request_id"]
+                        }
+                    },
+                    {
+                        "name": "search_history",
+                        "description": "Agentic RAG: Search customer support logs to personalize the retention email",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"customer_id": {"type": "integer"}},
+                            "required": ["customer_id"]
+                        }
+                    },
+                    {
+                        "name": "get_uplift",
+                        "description": "Causal Inference: Get the causal quadrant (Persuadable, Sure Thing, etc.) for a customer",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"customer_id": {"type": "integer"}},
+                            "required": ["customer_id"]
+                        }
                     }
                 ]
             }
@@ -354,6 +459,14 @@ async def mcp_hub(request: dict):
             result = simulate_revenue_impact(args.get("segment"), args.get("discount_rate"))
         elif tool_name == "check_eligibility":
             result = check_discount_eligibility(args.get("customer_id"))
+        elif tool_name == "request_approval":
+            result = request_budget_approval(args.get("customer_id"), args.get("amount"))
+        elif tool_name == "get_approval_status":
+            result = check_approval_status(args.get("request_id"))
+        elif tool_name == "search_history":
+            result = search_support_history(args.get("customer_id"))
+        elif tool_name == "get_uplift":
+            result = run_uplift_modeling(args.get("customer_id"))
         else:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Tool not found"}}
 
