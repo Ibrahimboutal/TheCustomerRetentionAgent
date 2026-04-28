@@ -248,6 +248,74 @@ def run_uplift_modeling(customer_id: int):
         
     return {"customer_id": customer_id, "uplift_quadrant": quadrant, "recommendation": advice}
 
+def simulate_outcome(customer_id: int):
+    """The 'Time Machine': Simulates the real-world response of a customer to the agent's actions."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # 1. Get current status
+    cursor.execute("SELECT name, segment, discount_code, purchase_count, total_spend FROM customers WHERE customer_id = ?", (customer_id,))
+    row = cursor.fetchone()
+    if not row:
+        conn.close()
+        return {"error": "Customer not found"}
+    
+    name, segment, has_discount, count, spend = row
+    
+    # 2. Get Uplift Quadrant (re-using the logic)
+    uplift = run_uplift_modeling(customer_id)
+    quadrant = uplift.get("uplift_quadrant", "Lost Causes")
+    
+    # 3. Probability Model
+    roll = random.random()
+    success = False
+    outcome_msg = ""
+    
+    if quadrant == "Persuadables":
+        # Discounts work wonders here
+        chance = 0.85 if has_discount else 0.40
+        if roll < chance:
+            success = True
+            outcome_msg = f"Success! The discount worked. {name} just placed a new order."
+        else:
+            outcome_msg = f"Neutral. {name} saw the email but hasn't acted yet."
+            
+    elif quadrant == "Sure Things":
+        # They were going to buy anyway
+        if roll < 0.95:
+            success = True
+            outcome_msg = f"Success! {name} made a purchase (as expected, they are a 'Sure Thing')."
+            
+    elif quadrant == "Sleeping Dogs":
+        # High risk of negative reaction
+        if roll < 0.30:
+            cursor.execute("UPDATE customers SET segment = 'CHURNED', total_spend = 0 WHERE customer_id = ?", (customer_id,))
+            outcome_msg = f"🛑 DISASTER! Contacting {name} (a 'Sleeping Dog') reminded them of their subscription, and they just CANCELLED."
+        else:
+            outcome_msg = f"Phew. {name} ignored the email. No harm done, but no purchase either."
+            
+    else: # Lost Causes
+        if roll < 0.05:
+            success = True
+            outcome_msg = f"Wow! Against the odds, {name} made a small purchase."
+        else:
+            outcome_msg = f"No response. {name} is likely a 'Lost Cause'."
+
+    # 4. Update Database on Success
+    if success:
+        new_purchase = round(random.uniform(50, 250), 2)
+        cursor.execute(
+            "UPDATE customers SET purchase_count = ?, total_spend = ?, segment = 'Champions' WHERE customer_id = ?", 
+            (count + 1, spend + new_purchase, customer_id)
+        )
+        conn.commit()
+        conn.close()
+        return {"status": "success", "result": outcome_msg, "revenue_gain": f"${new_purchase}"}
+    
+    conn.commit()
+    conn.close()
+    return {"status": "neutral/negative", "result": outcome_msg, "revenue_gain": "$0"}
+
 def draft_email_logic(customer_id: int, segment: str):
     conn = get_db_connection()
     cursor = conn.cursor()
@@ -438,6 +506,15 @@ async def mcp_hub(request: dict):
                             "properties": {"customer_id": {"type": "integer"}},
                             "required": ["customer_id"]
                         }
+                    },
+                    {
+                        "name": "simulate_outcome",
+                        "description": "The Time Machine: Simulate the real-world response of a customer to see if the retention strategy actually worked.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"customer_id": {"type": "integer"}},
+                            "required": ["customer_id"]
+                        }
                     }
                 ]
             }
@@ -473,6 +550,8 @@ async def mcp_hub(request: dict):
             result = search_support_history(args.get("customer_id"))
         elif tool_name == "get_uplift":
             result = run_uplift_modeling(args.get("customer_id"))
+        elif tool_name == "simulate_outcome":
+            result = simulate_outcome(args.get("customer_id"))
         else:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Tool not found"}}
 
