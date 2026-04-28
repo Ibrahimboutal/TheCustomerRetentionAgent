@@ -4,6 +4,7 @@ import pandas as pd
 import plotly.express as px
 import time
 from datetime import datetime
+from streamlit_autorefresh import st_autorefresh
 
 # Page config for premium feel
 st.set_page_config(
@@ -156,6 +157,9 @@ with tab2:
 
 with tab3:
     st.markdown("### 📡 Live Agent Feed")
+    # Refreshes the page every 5 seconds automatically for the live feed
+    st_autorefresh(interval=5000, key="agent_feed_refresh")
+    
     st.info("Showing real-world actions taken by the Google AI Agent via the MCP Server.")
     
     if st.button("🔄 Refresh Live Feed"):

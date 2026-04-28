@@ -32,6 +32,9 @@ def init_db():
     )
     ''')
 
+    # Clear logs for a clean demo slate
+    cursor.execute("DELETE FROM agent_logs")
+
     # Sample Names
     first_names = ["James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "William", "Elizabeth"]
     last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]
