@@ -86,7 +86,8 @@ class CausalRetentionSimulator:
         print("="*60)
 
         # Write to final report
-        with open(os.path.join(os.path.dirname(__file__), 'retention_roi_report.md'), 'w') as f:
+        ROOT_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        with open(os.path.join(ROOT_DIR, 'retention_roi_report.md'), 'w') as f:
             f.write("# Causal Uplift Report\n\n")
             f.write(f"**Baseline Churn:** {control_rate:.1f}%\n")
             f.write(f"**Optimized Churn:** {agent_rate:.1f}%\n\n")

@@ -64,7 +64,8 @@ def train():
     print(f"ROC-AUC Score: {roc_auc_score(y_test, y_prob):.4f}")
     
     # 6. SAVE REPORT
-    with open(os.path.join(BASE_DIR, 'model_performance_report.md'), 'w') as f:
+    ROOT_DIR = os.path.dirname(BASE_DIR)
+    with open(os.path.join(ROOT_DIR, 'model_performance_report.md'), 'w') as f:
         f.write("# ML Model Performance Report (Real Telco Data)\n\n")
         f.write(f"**ROC-AUC Score:** {roc_auc_score(y_test, y_prob):.4f}\n\n")
         f.write("### Classification Metrics\n")
