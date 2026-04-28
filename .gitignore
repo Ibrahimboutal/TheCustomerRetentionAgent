@@ -27,6 +27,7 @@ mock_crm.db
 # ML Artifacts
 *.pkl
 churn_training_data.csv
+*.png
 
 # Environment
 .env

@@ -35,11 +35,12 @@ The system follows a three-layer "Sandwich" architecture to ensure both empathy 
 pip install fastapi uvicorn pandas plotly streamlit scikit-learn requests
 ```
 
-### 2. Model Training (The Data Science Layer)
-Generate synthetic data and train the production model:
+### 2. Model Training & Analysis (The Data Science Layer)
+Generate synthetic data, train the production model, and generate analytical reports:
 ```bash
 python generate_training_data.py
 python train_model.py
+python generate_eda_report.py  # Generates Feature Importance & Correlation charts
 ```
 
 ### 3. Initialize the System
