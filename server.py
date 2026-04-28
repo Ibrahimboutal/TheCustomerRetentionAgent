@@ -6,8 +6,9 @@ import random
 import string
 import json
 import requests
+import pickle
 from sklearn.cluster import KMeans
-from sklearn.preprocessing import StandardScaler
+from sklearn.preprocessing import StandardScaler as SkScaler
 
 # Initialize FastAPI app
 app = FastAPI(title="Retention CRM MCP Server", version="1.0.0")
@@ -15,6 +16,19 @@ app = FastAPI(title="Retention CRM MCP Server", version="1.0.0")
 import os
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DB_PATH = os.path.join(BASE_DIR, "mock_crm.db")
+
+# --- LOAD PRODUCTION ML MODEL ---
+try:
+    with open(os.path.join(BASE_DIR, 'churn_model.pkl'), 'rb') as f:
+        CHURN_MODEL = pickle.load(f)
+    with open(os.path.join(BASE_DIR, 'scaler.pkl'), 'rb') as f:
+        SCALER = pickle.load(f)
+    with open(os.path.join(BASE_DIR, 'feature_names.pkl'), 'rb') as f:
+        FEATURE_NAMES = pickle.load(f)
+    print("DONE: Production ML Model loaded successfully.")
+except Exception as e:
+    CHURN_MODEL = None
+    print(f"WARN: Could not load ML model: {e}")
 
 def get_db_connection():
     return sqlite3.connect(DB_PATH)
@@ -39,12 +53,18 @@ def get_customers():
     df = pd.read_sql_query("SELECT * FROM customers", conn)
     conn.close()
     
-    # Add a mock ML churn probability score for the agent
-    # Heuristic: Probability increases with recency (max 180 days in mock data)
+    if df.empty or CHURN_MODEL is None:
+        return df.to_dict(orient="records")
+
+    # PREDICT CHURN LIVE USING PRODUCTION MODEL
+    # Features: tenure_days, support_tickets_30d, login_frequency, payment_failures, total_spend, recency
     today = datetime.now()
     df['last_purchase_date'] = pd.to_datetime(df['last_purchase_date'])
     df['recency'] = (today - df['last_purchase_date']).dt.days
-    df['churn_probability'] = df['recency'].apply(lambda x: min(100, round((x / 180) * 100, 1)))
+    
+    X = df[FEATURE_NAMES]
+    X_scaled = SCALER.transform(X)
+    df['churn_probability'] = (CHURN_MODEL.predict_proba(X_scaled)[:, 1] * 100).round(1)
     
     return df.to_dict(orient="records")
 
@@ -65,8 +85,8 @@ def segment_customers_logic():
     features = df[['recency', 'purchase_count', 'total_spend']]
     
     # Scale features
-    scaler = StandardScaler()
-    scaled_features = scaler.fit_transform(features)
+    cluster_scaler = SkScaler()
+    scaled_features = cluster_scaler.fit_transform(features)
     
     # Run K-Means
     kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
@@ -114,24 +134,69 @@ def segment_customers_logic():
     conn.close()
     return {"status": "success", "processed": len(results), "ml_method": "K-Means Clustering", "data": results}
 
-def generate_discount_code(customer_id: int):
-    code = "WINBACK20-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
+def generate_discount_code(customer_id: int, requested_rate: float = 0.2):
+    """
+    🛡️ DETERMINISTIC RULES ENGINE: 
+    The LLM proposes, but the Python backend enforces the financial guardrails.
+    """
     conn = get_db_connection()
+    df = pd.read_sql_query("SELECT * FROM customers WHERE customer_id = ?", conn, params=(customer_id,))
+    
+    if df.empty:
+        conn.close()
+        return {"error": "Customer not found"}
+    
+    customer = df.iloc[0]
+    
+    # 1. Run live ML Prediction for the Rules Engine
+    today = datetime.now()
+    last_purchase = datetime.strptime(customer['last_purchase_date'], '%Y-%m-%d')
+    recency = (today - last_purchase).days
+    
+    features = pd.DataFrame([[
+        customer['tenure_days'], customer['support_tickets_30d'], 
+        customer['login_frequency'], customer['payment_failures'], 
+        customer['total_spend'], recency
+    ]], columns=FEATURE_NAMES)
+    
+    risk = CHURN_MODEL.predict_proba(SCALER.transform(features))[0, 1]
+    
+    # 2. ENFORCE RULES
+    # - If Risk > 70% and LTV > 1000 -> Max 20%
+    # - If Risk < 30% -> Max 5% (Don't waste money)
+    # - Otherwise -> Max 10%
+    
+    max_allowed = 0.10
+    if risk > 0.7 and customer['total_spend'] > 1000:
+        max_allowed = 0.20
+    elif risk < 0.3:
+        max_allowed = 0.05
+    
+    final_rate = min(requested_rate, max_allowed)
+    
+    code = f"SAVE{int(final_rate*100)}-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     cursor = conn.cursor()
     
     # Update customer record
     cursor.execute("UPDATE customers SET discount_code = ? WHERE customer_id = ?", (code, customer_id))
     
     # Log to promotion history
-    today = datetime.now().strftime('%Y-%m-%d')
+    today_str = datetime.now().strftime('%Y-%m-%d')
     cursor.execute(
         "INSERT INTO promotion_history (customer_id, promotion_type, date_issued) VALUES (?, ?, ?)",
-        (customer_id, "20% Winback", today)
+        (customer_id, f"{int(final_rate*100)}% Discount", today_str)
     )
     
     conn.commit()
     conn.close()
-    return {"status": "success", "customer_id": customer_id, "code": code}
+    
+    return {
+        "status": "success", 
+        "customer_id": customer_id, 
+        "code": code,
+        "applied_rate": f"{int(final_rate*100)}%",
+        "rules_engine_note": f"Requested {int(requested_rate*100)}%, but Rules Engine capped at {int(max_allowed*100)}% based on Churn Risk ({int(risk*100)}%)."
+    }
 
 def check_discount_eligibility(customer_id: int):
     """Business Guardrail: Check if a customer is eligible for a new discount."""
@@ -410,10 +475,13 @@ async def mcp_hub(request: dict):
                     },
                     {
                         "name": "generate_discount",
-                        "description": "Generate a 20% win-back code for a specific customer",
+                        "description": "Generate a unique win-back discount code for a customer",
                         "inputSchema": {
                             "type": "object",
-                            "properties": {"customer_id": {"type": "integer"}},
+                            "properties": {
+                                "customer_id": {"type": "integer"},
+                                "requested_rate": {"type": "number", "description": "e.g., 0.2 for 20%"}
+                            },
                             "required": ["customer_id"]
                         }
                     },
@@ -531,7 +599,10 @@ async def mcp_hub(request: dict):
         elif tool_name == "segment_customers":
             result = segment_customers_logic()
         elif tool_name == "generate_discount":
-            result = generate_discount_code(args.get("customer_id"))
+            result = generate_discount_code(
+                args.get("customer_id"), 
+                args.get("requested_rate", 0.2)
+            )
         elif tool_name == "flag_vip":
             result = flag_vip_customer(args.get("customer_id"))
         elif tool_name == "draft_email":

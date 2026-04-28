@@ -20,39 +20,22 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
-.pytest_cache/
-.coverage
-.cache
-nosetests.xml
-coverage.xml
-*.cover
-.venv/
-venv/
-ENV/
-
-# Streamlit
-.streamlit/
 
 # Database
-# mock_crm.db  # Commented out so you can share the database if needed for the hackathon
+mock_crm.db
+
+# ML Artifacts
+*.pkl
+churn_training_data.csv
 
 # Environment
 .env
 .venv
-env/
 venv/
 ENV/
 
-# OS
-.DS_Store
-Thumbs.db
-
-# ngrok
+# Tools
 ngrok.exe
-ngrok.log
 
-# MCP
-mcp.log
-
-# database
-mock_crm.db
+# Streamlit
+.streamlit/

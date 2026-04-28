@@ -8,6 +8,12 @@ def init_db():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
+    # Drop tables for a clean production reset
+    cursor.execute("DROP TABLE IF EXISTS customers")
+    cursor.execute("DROP TABLE IF EXISTS approvals")
+    cursor.execute("DROP TABLE IF EXISTS promotion_history")
+    cursor.execute("DROP TABLE IF EXISTS support_logs")
+
     # Create Customers table
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS customers (
@@ -17,6 +23,10 @@ def init_db():
         last_purchase_date TEXT,
         purchase_count INTEGER,
         total_spend REAL,
+        tenure_days INTEGER,
+        support_tickets_30d INTEGER,
+        login_frequency INTEGER,
+        payment_failures INTEGER,
         segment TEXT,
         vip_flag INTEGER DEFAULT 0,
         discount_code TEXT
@@ -123,13 +133,19 @@ def init_db():
             i, name, email, 
             last_purchase.strftime('%Y-%m-%d'), 
             count, round(spend, 2),
+            random.randint(30, 730), # tenure_days
+            random.randint(0, 5),    # support_tickets_30d
+            random.randint(1, 30),   # login_frequency
+            random.choice([0, 1, 2]),# payment_failures
             "Unassigned", 0, None
         ))
 
     cursor.executemany('''
     INSERT OR REPLACE INTO customers 
-    (customer_id, name, email, last_purchase_date, purchase_count, total_spend, segment, vip_flag, discount_code)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    (customer_id, name, email, last_purchase_date, purchase_count, total_spend, 
+     tenure_days, support_tickets_30d, login_frequency, payment_failures,
+     segment, vip_flag, discount_code)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ''', customers)
 
     conn.commit()
