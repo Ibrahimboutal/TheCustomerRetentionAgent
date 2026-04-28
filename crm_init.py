@@ -35,6 +35,17 @@ def init_db():
     # Clear logs for a clean demo slate
     cursor.execute("DELETE FROM agent_logs")
 
+    # Create Promotion History table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS promotion_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        customer_id INTEGER,
+        promotion_type TEXT,
+        date_issued TEXT,
+        FOREIGN KEY (customer_id) REFERENCES customers (customer_id)
+    )
+    ''')
+
     # Sample Names
     first_names = ["James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "William", "Elizabeth"]
     last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]

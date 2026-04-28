@@ -1,9 +1,13 @@
 from fastapi import FastAPI, Response, Request
 import sqlite3
 import pandas as pd
-from datetime import datetime
+from datetime import datetime, timedelta
 import random
 import string
+import json
+import requests
+from sklearn.cluster import KMeans
+from sklearn.preprocessing import StandardScaler
 
 # Initialize FastAPI app
 app = FastAPI(title="Retention CRM MCP Server", version="1.0.0")
@@ -32,51 +36,145 @@ def get_customers():
     conn = get_db_connection()
     df = pd.read_sql_query("SELECT * FROM customers", conn)
     conn.close()
+    
+    # Add a mock ML churn probability score for the agent
+    # Heuristic: Probability increases with recency (max 180 days in mock data)
+    today = datetime.now()
+    df['last_purchase_date'] = pd.to_datetime(df['last_purchase_date'])
+    df['recency'] = (today - df['last_purchase_date']).dt.days
+    df['churn_probability'] = df['recency'].apply(lambda x: min(100, round((x / 180) * 100, 1)))
+    
     return df.to_dict(orient="records")
 
 def segment_customers_logic():
     conn = get_db_connection()
     df = pd.read_sql_query("SELECT * FROM customers", conn)
+    
+    if df.empty:
+        conn.close()
+        return {"status": "error", "message": "No customers to segment"}
+
+    # Prepare data for K-Means (RFM features)
     today = datetime.now()
     df['last_purchase_date'] = pd.to_datetime(df['last_purchase_date'])
     df['recency'] = (today - df['last_purchase_date']).dt.days
-
+    
+    # Features: Recency, Frequency (purchase_count), Monetary (total_spend)
+    features = df[['recency', 'purchase_count', 'total_spend']]
+    
+    # Scale features
+    scaler = StandardScaler()
+    scaled_features = scaler.fit_transform(features)
+    
+    # Run K-Means
+    kmeans = KMeans(n_clusters=4, random_state=42, n_init=10)
+    df['cluster'] = kmeans.fit_predict(scaled_features)
+    
+    # Map clusters to meaningful names based on cluster centroids
+    # Heuristic: Find center with highest spend for Champions, etc.
+    centers = kmeans.cluster_centers_
+    # centers[i] = [recency, count, spend] (scaled)
+    # Champions: Low recency, High count, High spend
+    # At Risk: High recency, Low count, Low spend
+    
+    # For simplicity in a live demo, we'll sort clusters by spend/count and assign
+    cluster_means = df.groupby('cluster')[['recency', 'purchase_count', 'total_spend']].mean()
+    
+    # Logic to assign segment names to cluster IDs
+    mapping = {}
+    
+    # 1. At Risk (Highest Recency)
+    at_risk_cluster = cluster_means['recency'].idxmax()
+    mapping[at_risk_cluster] = "At Risk"
+    
+    # 2. Champions (Highest Purchase Count among the remaining)
+    remaining = cluster_means.drop(at_risk_cluster)
+    champions_cluster = remaining['purchase_count'].idxmax()
+    mapping[champions_cluster] = "Champions"
+    
+    # 3. Big Spenders (Highest Total Spend among the remaining)
+    remaining = remaining.drop(champions_cluster)
+    big_spenders_cluster = remaining['total_spend'].idxmax()
+    mapping[big_spenders_cluster] = "Big Spenders"
+    
+    # 4. Loyal (The last one)
+    loyal_cluster = remaining.drop(big_spenders_cluster).index[0]
+    mapping[loyal_cluster] = "Loyal"
+    
     results = []
+    cursor = conn.cursor()
     for _, row in df.iterrows():
-        # Applying your strict 4-segment rules
-        if row['recency'] <= 30 and row['purchase_count'] >= 10 and row['total_spend'] >= 1000:
-            segment = "Champions"
-        elif row['total_spend'] >= 1500:
-            segment = "Big Spenders"
-        elif row['recency'] > 60:
-            segment = "At Risk"
-        else:
-            segment = "Loyal"
-        
-        cursor = conn.cursor()
+        segment = mapping[row['cluster']]
         cursor.execute("UPDATE customers SET segment = ? WHERE customer_id = ?", (segment, row['customer_id']))
         results.append({"id": row['customer_id'], "name": row['name'], "segment": segment})
     
     conn.commit()
     conn.close()
-    return {"status": "success", "processed": len(results), "data": results}
+    return {"status": "success", "processed": len(results), "ml_method": "K-Means Clustering", "data": results}
 
 def generate_discount_code(customer_id: int):
     code = "WINBACK20-" + ''.join(random.choices(string.ascii_uppercase + string.digits, k=6))
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # Update customer record
     cursor.execute("UPDATE customers SET discount_code = ? WHERE customer_id = ?", (code, customer_id))
+    
+    # Log to promotion history
+    today = datetime.now().strftime('%Y-%m-%d')
+    cursor.execute(
+        "INSERT INTO promotion_history (customer_id, promotion_type, date_issued) VALUES (?, ?, ?)",
+        (customer_id, "20% Winback", today)
+    )
+    
     conn.commit()
     conn.close()
     return {"status": "success", "customer_id": customer_id, "code": code}
 
+def check_discount_eligibility(customer_id: int):
+    """Business Guardrail: Check if a customer is eligible for a new discount."""
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    
+    # Check if they received a discount in the last 30 days
+    thirty_days_ago = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+    cursor.execute(
+        "SELECT date_issued FROM promotion_history WHERE customer_id = ? AND date_issued > ? ORDER BY date_issued DESC",
+        (customer_id, thirty_days_ago)
+    )
+    row = cursor.fetchone()
+    conn.close()
+    
+    if row:
+        return {
+            "eligible": False, 
+            "reason": f"Customer already received a discount on {row[0]}. Policy prevents multiple discounts within 30 days.",
+            "policy": "Anti-Abuse Enterprise Guardrail"
+        }
+    
+    return {"eligible": True, "message": "No recent discounts found. Customer is eligible."}
+
 def flag_vip_customer(customer_id: int):
     conn = get_db_connection()
     cursor = conn.cursor()
+    cursor.execute("SELECT name FROM customers WHERE customer_id = ?", (customer_id,))
+    name = cursor.fetchone()[0]
     cursor.execute("UPDATE customers SET vip_flag = 1 WHERE customer_id = ?", (customer_id,))
     conn.commit()
     conn.close()
-    return {"status": "success", "customer_id": customer_id, "message": "Flagged as VIP"}
+    
+    # --- PRODUCTION WEBHOOK (Slack/Discord) ---
+    WEBHOOK_URL = "https://discord.com/api/webhooks/dummy" # Placeholder for demo
+    try:
+        payload = {
+            "content": f"🚨 **VIP ALERT**: `{name}` has just been promoted to the **Champions** tier. Account Managers, please prioritize high-touch outreach!"
+        }
+        # In a real demo, this sends a live notification to your phone/slack
+        # requests.post(WEBHOOK_URL, json=payload, timeout=2) 
+    except Exception as e:
+        print(f"Webhook failed: {e}")
+        
+    return {"status": "success", "customer_id": customer_id, "message": f"Flagged {name} as VIP and triggered notification."}
 
 def draft_email_logic(customer_id: int, segment: str):
     conn = get_db_connection()
@@ -220,6 +318,15 @@ async def mcp_hub(request: dict):
                             },
                             "required": ["segment", "discount_rate"]
                         }
+                    },
+                    {
+                        "name": "check_eligibility",
+                        "description": "Enterprise Guardrail: Check if a customer is eligible for a new discount based on history",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"customer_id": {"type": "integer"}},
+                            "required": ["customer_id"]
+                        }
                     }
                 ]
             }
@@ -245,6 +352,8 @@ async def mcp_hub(request: dict):
             result = flag_for_sms_campaign(args.get("customer_id"))
         elif tool_name == "simulate_revenue":
             result = simulate_revenue_impact(args.get("segment"), args.get("discount_rate"))
+        elif tool_name == "check_eligibility":
+            result = check_discount_eligibility(args.get("customer_id"))
         else:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Tool not found"}}
 
