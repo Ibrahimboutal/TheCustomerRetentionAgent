@@ -1,7 +1,7 @@
 import sqlite3
 import random
 import os
-from datetime import datetime, timedelta
+from datetime import datetime
 
 def init_db():
     BASE_DIR = os.path.dirname(os.path.abspath(__file__))
@@ -10,97 +10,91 @@ def init_db():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
 
-    # Drop tables for a clean production reset
     cursor.execute("DROP TABLE IF EXISTS customers")
-    cursor.execute("DROP TABLE IF EXISTS approvals")
-    cursor.execute("DROP TABLE IF EXISTS promotion_history")
-    cursor.execute("DROP TABLE IF EXISTS support_logs")
+    cursor.execute("DROP TABLE IF EXISTS agent_logs") # Clean up old logs too
+    cursor.execute("CREATE TABLE agent_logs (timestamp TEXT, tool_name TEXT, arguments TEXT, result TEXT)")
 
-    # Create Customers table with Telco Features
+    # Complete Telco Schema
     cursor.execute('''
-    CREATE TABLE IF NOT EXISTS customers (
+    CREATE TABLE customers (
         customer_id INTEGER PRIMARY KEY,
         name TEXT,
-        email TEXT,
-        tenure INTEGER,
-        MonthlyCharges REAL,
-        TotalCharges REAL,
+        gender TEXT,
         SeniorCitizen INTEGER,
+        Partner TEXT,
+        Dependents TEXT,
+        tenure INTEGER,
+        PhoneService TEXT,
+        MultipleLines TEXT,
+        InternetService TEXT,
+        OnlineSecurity TEXT,
+        OnlineBackup TEXT,
+        DeviceProtection TEXT,
+        TechSupport TEXT,
+        StreamingTV TEXT,
+        StreamingMovies TEXT,
         Contract TEXT,
         PaperlessBilling TEXT,
-        InternetService TEXT,
+        PaymentMethod TEXT,
+        MonthlyCharges REAL,
+        TotalCharges REAL,
         segment TEXT,
         vip_flag INTEGER DEFAULT 0,
         discount_code TEXT
     )''')
 
-    # Create Support Logs
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS support_logs (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        customer_id INTEGER,
-        log_text TEXT,
-        timestamp TEXT
-    )''')
-    
-    # Create Approvals
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS approvals (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        customer_id INTEGER,
-        requested_amount REAL,
-        status TEXT DEFAULT 'pending',
-        timestamp TEXT
-    )''')
-
-    # Create Promotion History
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS promotion_history (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        customer_id INTEGER,
-        promotion_type TEXT,
-        date_issued TEXT
-    )''')
-
-    # Generate mock data
-    contracts = ['Month-to-month', 'One year', 'Two year']
-    internet = ['DSL', 'Fiber optic', 'No']
-    yes_no = ['Yes', 'No']
+    # Categories from the dataset
+    options = {
+        'gender': ['Female', 'Male'],
+        'Partner': ['Yes', 'No'],
+        'Dependents': ['Yes', 'No'],
+        'PhoneService': ['Yes', 'No'],
+        'MultipleLines': ['No phone service', 'No', 'Yes'],
+        'InternetService': ['DSL', 'Fiber optic', 'No'],
+        'OnlineSecurity': ['No', 'Yes', 'No internet service'],
+        'OnlineBackup': ['No', 'Yes', 'No internet service'],
+        'DeviceProtection': ['No', 'Yes', 'No internet service'],
+        'TechSupport': ['No', 'Yes', 'No internet service'],
+        'StreamingTV': ['No', 'Yes', 'No internet service'],
+        'StreamingMovies': ['No', 'Yes', 'No internet service'],
+        'Contract': ['Month-to-month', 'One year', 'Two year'],
+        'PaperlessBilling': ['Yes', 'No'],
+        'PaymentMethod': ['Electronic check', 'Mailed check', 'Bank transfer (automatic)', 'Credit card (automatic)']
+    }
     
     customers = []
     for i in range(1, 51):
         name = random.choice(["James", "Mary", "John", "Patricia", "Robert", "Jennifer"]) + " " + \
                random.choice(["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia"])
-        email = name.lower().replace(" ", ".") + "@example.com"
         
         tenure = random.randint(1, 72)
         monthly = round(random.uniform(20, 120), 2)
         total = round(tenure * monthly, 2)
         
-        customers.append((
-            i, name, email, 
-            tenure, monthly, total,
-            random.choice([0, 1]),
-            random.choice(contracts),
-            random.choice(yes_no),
-            random.choice(internet),
-            "Unassigned", 0, None
-        ))
+        cust_row = [i, name]
+        for key in ['gender', 'SeniorCitizen', 'Partner', 'Dependents']:
+            if key == 'SeniorCitizen':
+                cust_row.append(random.choice([0, 1]))
+            else:
+                cust_row.append(random.choice(options[key]))
+        
+        cust_row.append(tenure)
+        
+        for key in ['PhoneService', 'MultipleLines', 'InternetService', 'OnlineSecurity', 
+                    'OnlineBackup', 'DeviceProtection', 'TechSupport', 'StreamingTV', 'StreamingMovies',
+                    'Contract', 'PaperlessBilling', 'PaymentMethod']:
+            cust_row.append(random.choice(options[key]))
+            
+        cust_row.extend([monthly, total, "Unassigned", 0, None])
+        customers.append(tuple(cust_row))
 
     cursor.executemany('''
-    INSERT INTO customers 
-    (customer_id, name, email, tenure, MonthlyCharges, TotalCharges, SeniorCitizen, 
-     Contract, PaperlessBilling, InternetService, segment, vip_flag, discount_code)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ''', customers)
-
-    # Add sample support logs
-    cursor.execute("INSERT INTO support_logs (customer_id, log_text, timestamp) VALUES (1, 'Delayed shipping on last order.', '2026-04-25')")
-    cursor.execute("INSERT INTO support_logs (customer_id, log_text, timestamp) VALUES (2, 'Website login issues.', '2026-04-26')")
 
     conn.commit()
     conn.close()
-    print("Database initialized successfully with Telco Features.")
+    print("Database initialized with 100% Telco feature compatibility.")
 
 if __name__ == "__main__":
     init_db()
