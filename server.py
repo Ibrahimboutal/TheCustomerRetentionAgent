@@ -13,6 +13,19 @@ DB_PATH = "mock_crm.db"
 def get_db_connection():
     return sqlite3.connect(DB_PATH)
 
+def log_agent_action(tool_name: str, arguments: dict, result: any):
+    """Logs an agent tool execution to the database for real-time monitoring."""
+    import json
+    conn = get_db_connection()
+    cursor = conn.cursor()
+    timestamp = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    cursor.execute(
+        "INSERT INTO agent_logs (timestamp, tool_name, arguments, result) VALUES (?, ?, ?, ?)",
+        (timestamp, tool_name, json.dumps(arguments), str(result))
+    )
+    conn.commit()
+    conn.close()
+
 # --- CRM LOGIC FUNCTIONS ---
 
 def get_customers():
@@ -173,6 +186,9 @@ async def mcp_hub(request: dict):
             result = draft_email_logic(args.get("customer_id"), args.get("segment"))
         else:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Tool not found"}}
+
+        # Log the action for the dashboard
+        log_agent_action(tool_name, args, result)
 
         return {
             "jsonrpc": "2.0",

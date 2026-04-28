@@ -21,6 +21,17 @@ def init_db():
     )
     ''')
 
+    # Create Agent Logs table
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS agent_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp TEXT,
+        tool_name TEXT,
+        arguments TEXT,
+        result TEXT
+    )
+    ''')
+
     # Sample Names
     first_names = ["James", "Mary", "Robert", "Patricia", "John", "Jennifer", "Michael", "Linda", "William", "Elizabeth"]
     last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia", "Miller", "Davis", "Rodriguez", "Martinez"]

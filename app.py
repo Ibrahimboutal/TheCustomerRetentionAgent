@@ -95,74 +95,11 @@ def load_data():
     conn.close()
     return df
 
-def run_retention_pipeline():
-    # This simulates the Gemini Agent calling the MCP tools
-    logs = []
-    
-    def add_log(msg, type="info"):
-        emoji = "🔍" if type=="info" else "⚡" if type=="action" else "✅"
-        logs.append(f"{emoji} [{datetime.now().strftime('%H:%M:%S')}] {msg}")
-        log_area.markdown("\n".join([f"<div class='log-container'>{l}</div>" for l in logs]), unsafe_allow_html=True)
-        time.sleep(1)
-
-    add_log("Agent Initialized: Senior Retention Strategist activated.")
-    add_log("Action 1: Querying database for recent transactions...")
-    
+def fetch_agent_logs():
     conn = sqlite3.connect(DB_PATH)
-    df = pd.read_sql_query("SELECT * FROM customers", conn)
-    
-    add_log(f"Data Ingested: {len(df)} customer records retrieved.")
-    add_log("Calculating RFM scores for the customer base...")
-    
-    # Simulate tool call: segment_customers
-    add_log("Action 2: Running Categorization Model (MCP: segment_customers)...")
-    
-    # Internal segmentation logic for simulation
-    today = datetime.now()
-    df['last_purchase_date'] = pd.to_datetime(df['last_purchase_date'])
-    df['recency'] = (today - df['last_purchase_date']).dt.days
-    
-    segments = []
-    for idx, row in df.iterrows():
-        # Updated strictly for 4 segments
-        if row['recency'] <= 30 and row['purchase_count'] >= 10 and row['total_spend'] >= 1000:
-            segment = "Champions"
-        elif row['total_spend'] >= 1500:
-            segment = "Big Spenders"
-        elif row['recency'] > 60:  # Catch-all for older inactive users
-            segment = "At Risk"
-        else:
-            segment = "Loyal"      # Default fallback for active, regular users
-        
-        segments.append(segment)
-        conn.execute("UPDATE customers SET segment = ? WHERE customer_id = ?", (segment, row['customer_id']))
-    
-    conn.commit()
-    add_log("Segmentation Complete: 4 distinct segments identified.")
-    
-    # Action 3: Autonomous Execution
-    add_log("Action 3: Executing Targeted Retention Strategies...")
-    
-    at_risk = df[df['recency'] > 60]
-    for idx, row in at_risk.head(5).iterrows():
-        code = f"WINBACK20-{idx}X99"
-        conn.execute("UPDATE customers SET discount_code = ? WHERE customer_id = ?", (code, row['customer_id']))
-        add_log(f"Tool Call: generate_discount_code(id={row['customer_id']}) -> {code}", "action")
-        add_log(f"Tool Call: draft_email(id={row['customer_id']}, segment='At Risk') -> Subject: We miss you...", "action")
-        
-    big_spenders = df[df['total_spend'] >= 1500]
-    for idx, row in big_spenders.head(3).iterrows():
-        conn.execute("UPDATE customers SET vip_flag = 1 WHERE customer_id = ?", (row['customer_id'],))
-        add_log(f"Tool Call: flag_vip_customer(id={row['customer_id']}) -> Success", "action")
-        add_log(f"Tool Call: draft_email(id={row['customer_id']}, segment='Big Spenders') -> Subject: VIP Access...", "action")
-
-    conn.commit()
+    logs = pd.read_sql_query("SELECT * FROM agent_logs ORDER BY timestamp DESC LIMIT 20", conn)
     conn.close()
-    add_log("Pipeline Run Finished. Database updated.", "success")
-    st.balloons()
-    time.sleep(2)
-    st.session_state.running = False
-    st.rerun()
+    return logs
 
 # --- UI LAYOUT ---
 
@@ -218,12 +155,25 @@ with tab2:
     st.dataframe(df.style.background_gradient(subset=['total_spend'], cmap='Purples'), width='stretch')
 
 with tab3:
-    log_area = st.empty()
-    if 'running' in st.session_state and st.session_state.running:
-        run_retention_pipeline()
-        del st.session_state.running
+    st.markdown("### 📡 Live Agent Feed")
+    st.info("Showing real-world actions taken by the Google AI Agent via the MCP Server.")
+    
+    if st.button("🔄 Refresh Live Feed"):
+        st.rerun()
+
+    agent_logs = fetch_agent_logs()
+    if agent_logs.empty:
+        st.write("No agent activity recorded yet. Waiting for Google AI Agent to call tools...")
     else:
-        st.write("Waiting for agent activation... Click 'Run Daily Retention Pipeline' to start.")
+        for idx, row in agent_logs.iterrows():
+            st.markdown(f"""
+            <div class='log-container'>
+                <span style='color: #9D4EDD;'>[{row['timestamp']}]</span> 
+                <b>{row['tool_name']}</b><br>
+                <small>Args: {row['arguments']}</small><br>
+                <span style='color: #4DFF88;'>Result: {row['result']}</span>
+            </div>
+            """, unsafe_allow_html=True)
 
 # Footer
 st.markdown("<br><p style='text-align: center; color: #5A189A;'>Hackathon Prototype - Customer Retention Agent v1.0</p>", unsafe_allow_html=True)
