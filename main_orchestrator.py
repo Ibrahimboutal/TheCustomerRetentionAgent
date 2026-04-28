@@ -27,7 +27,7 @@ def run_retention_loop(customer_id):
     print("[2/5] DECIDING: Enforcing financial guardrails via Decision Engine...")
     # Assume the agent proposes a 20% discount
     decision = DecisionEngine.validate_action(
-        customer['name'], 0.20, risk_score/100, customer['total_spend']
+        customer['name'], 0.20, risk_score/100, customer['TotalCharges']
     )
     print(f"      - Strategy Approved: {decision['approved_rate']} Discount")
     print(f"      - Justification: {decision['justification']}")

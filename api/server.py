@@ -115,6 +115,8 @@ def explain_churn_risk(customer_id: int):
         "top_contributing_factors": reasons if reasons else ["Stable customer profile."],
         "ml_inference_note": "Risk calculated using IBM Telco RandomForest Model (Real Data)."
     }
+
+def segment_customers_logic():
     conn = get_db_connection()
     df = pd.read_sql_query("SELECT * FROM customers", conn)
     
@@ -122,13 +124,8 @@ def explain_churn_risk(customer_id: int):
         conn.close()
         return {"status": "error", "message": "No customers to segment"}
 
-    # Prepare data for K-Means (RFM features)
-    today = datetime.now()
-    df['last_purchase_date'] = pd.to_datetime(df['last_purchase_date'])
-    df['recency'] = (today - df['last_purchase_date']).dt.days
-    
-    # Features: Recency, Frequency (purchase_count), Monetary (total_spend)
-    features = df[['recency', 'purchase_count', 'total_spend']]
+    # Features: Tenure, MonthlyCharges, TotalCharges (Telco features)
+    features = df[['tenure', 'MonthlyCharges', 'TotalCharges']]
     
     # Scale features
     cluster_scaler = SkScaler()
@@ -145,24 +142,24 @@ def explain_churn_risk(customer_id: int):
     # Champions: Low recency, High count, High spend
     # At Risk: High recency, Low count, Low spend
     
-    # For simplicity in a live demo, we'll sort clusters by spend/count and assign
-    cluster_means = df.groupby('cluster')[['recency', 'purchase_count', 'total_spend']].mean()
+    # For simplicity in a live demo, we'll sort clusters by TotalCharges/tenure and assign
+    cluster_means = df.groupby('cluster')[['tenure', 'MonthlyCharges', 'TotalCharges']].mean()
     
     # Logic to assign segment names to cluster IDs
     mapping = {}
     
-    # 1. At Risk (Highest Recency)
-    at_risk_cluster = cluster_means['recency'].idxmax()
+    # 1. At Risk (Lowest Tenure)
+    at_risk_cluster = cluster_means['tenure'].idxmin()
     mapping[at_risk_cluster] = "At Risk"
     
-    # 2. Champions (Highest Purchase Count among the remaining)
+    # 2. Champions (Highest Total Charges among the remaining)
     remaining = cluster_means.drop(at_risk_cluster)
-    champions_cluster = remaining['purchase_count'].idxmax()
+    champions_cluster = remaining['TotalCharges'].idxmax()
     mapping[champions_cluster] = "Champions"
     
-    # 3. Big Spenders (Highest Total Spend among the remaining)
+    # 3. Big Spenders (Highest Monthly Charges among the remaining)
     remaining = remaining.drop(champions_cluster)
-    big_spenders_cluster = remaining['total_spend'].idxmax()
+    big_spenders_cluster = remaining['MonthlyCharges'].idxmax()
     mapping[big_spenders_cluster] = "Big Spenders"
     
     # 4. Loyal (The last one)
@@ -195,20 +192,16 @@ def generate_discount_code(customer_id: int, requested_rate: float = 0.2):
     customer = df.iloc[0]
     
     # 1. Run live ML Prediction for the Rules Engine
-    today = datetime.now()
-    last_purchase = datetime.strptime(customer['last_purchase_date'], '%Y-%m-%d')
-    recency = (today - last_purchase).days
-    
-    features = pd.DataFrame([[
-        customer['tenure_days'], customer['support_tickets_30d'], 
-        customer['login_frequency'], customer['payment_failures'], 
-        customer['total_spend'], recency
-    ]], columns=FEATURE_NAMES)
-    risk = CHURN_MODEL.predict_proba(SCALER.transform(features))[0, 1]
+    X = df[FEATURE_NAMES].copy()
+    for col, le in ENCODERS.items():
+        if col in X.columns:
+            X[col] = le.transform(X[col])
+            
+    risk = CHURN_MODEL.predict_proba(SCALER.transform(X))[0, 1]
     
     # 2. ENFORCE RULES VIA DECISION ENGINE
     eval_result = DecisionEngine.validate_action(
-        customer['name'], requested_rate, risk, customer['total_spend']
+        customer['name'], requested_rate, risk, customer['TotalCharges']
     )
     
     final_rate = float(eval_result['approved_rate'].replace('%', '')) / 100.0
@@ -361,13 +354,13 @@ def simulate_outcome(customer_id: int):
     cursor = conn.cursor()
     
     # 1. Get current status
-    cursor.execute("SELECT name, segment, discount_code, purchase_count, total_spend FROM customers WHERE customer_id = ?", (customer_id,))
+    cursor.execute("SELECT name, segment, discount_code, tenure, TotalCharges FROM customers WHERE customer_id = ?", (customer_id,))
     row = cursor.fetchone()
     if not row:
         conn.close()
         return {"error": "Customer not found"}
     
-    name, segment, has_discount, count, spend = row
+    name, segment, has_discount, tenure, charges = row
     
     # 2. Get Uplift Quadrant (re-using the logic)
     uplift = run_uplift_modeling(customer_id)
@@ -412,8 +405,8 @@ def simulate_outcome(customer_id: int):
     if success:
         new_purchase = round(random.uniform(50, 250), 2)
         cursor.execute(
-            "UPDATE customers SET purchase_count = ?, total_spend = ?, segment = 'Champions' WHERE customer_id = ?", 
-            (count + 1, spend + new_purchase, customer_id)
+            "UPDATE customers SET tenure = ?, TotalCharges = ?, segment = 'Champions' WHERE customer_id = ?", 
+            (tenure + 1, charges + new_purchase, customer_id)
         )
         conn.commit()
         conn.close()
@@ -446,13 +439,13 @@ def draft_email_logic(customer_id: int, segment: str):
 
 def simulate_revenue_impact(segment: str, discount_rate: float):
     conn = get_db_connection()
-    df = pd.read_sql_query("SELECT total_spend FROM customers WHERE segment = ?", conn, params=(segment,))
+    df = pd.read_sql_query("SELECT TotalCharges FROM customers WHERE segment = ?", conn, params=(segment,))
     conn.close()
     
     if df.empty:
         return {"error": f"No customers found in segment '{segment}'"}
     
-    baseline = df['total_spend'].sum()
+    baseline = df['TotalCharges'].sum()
     discount_cost = baseline * discount_rate
     # Heuristic: 30% retention lift in Lifetime Value
     projected_revenue = (baseline - discount_cost) * 1.3

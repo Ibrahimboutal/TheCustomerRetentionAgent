@@ -13,9 +13,3 @@
    macro avg       0.75      0.70      0.72      1407
 weighted avg       0.79      0.80      0.79      1407
 ```
-
-### Technical Notes
-- **Features:** tenure, MonthlyCharges, TotalCharges, Contract Type, Internet Service, etc.
-- **Preprocessing:** Label Encoding for categoricals, StandardScaler for continuous variables.
-- **Algorithm:** RandomForestClassifier (n_estimators=100, max_depth=10).
-- **Inference:** Production-ready pkl files saved in `/ml`.

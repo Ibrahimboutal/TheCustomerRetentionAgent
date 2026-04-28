@@ -151,7 +151,7 @@ with col3:
     champions_count = len(df[df['segment'] == 'Champions'])
     st.markdown(f"<div class='metric-card'><h3>Champions</h3><h2 style='color: #4DFF88;'>{champions_count}</h2></div>", unsafe_allow_html=True)
 with col4:
-    revenue = f"${df['total_spend'].sum():,.0f}"
+    revenue = f"${df['TotalCharges'].sum():,.0f}"
     st.markdown(f"<div class='metric-card'><h3>Total Revenue</h3><h2>{revenue}</h2></div>", unsafe_allow_html=True)
 
 st.write("---")
@@ -168,8 +168,8 @@ with tab1:
         st.plotly_chart(fig, width='stretch')
     
     with c2:
-        fig2 = px.scatter(df, x='purchase_count', y='total_spend', color='segment',
-                         size='total_spend', hover_name='name', title='Spend vs Frequency by Segment')
+        fig2 = px.scatter(df, x='tenure', y='TotalCharges', color='segment',
+                         size='TotalCharges', hover_name='name', title='LTV vs Tenure by Segment')
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#E0AAFF")
         st.plotly_chart(fig2, width='stretch')
 
@@ -197,7 +197,7 @@ with tab1:
         st.success("**Projected Lift: +212% Net Revenue**")
 
 with tab2:
-    st.dataframe(df.style.background_gradient(subset=['total_spend'], cmap='Purples'), width='stretch')
+    st.dataframe(df.style.background_gradient(subset=['TotalCharges'], cmap='Purples'), width='stretch')
 
 with tab3:
     st.markdown("### 📡 Live Agent Feed")
