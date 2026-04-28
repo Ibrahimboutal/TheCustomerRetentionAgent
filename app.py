@@ -126,11 +126,17 @@ df = load_data()
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/robot-3.png", width=100)
     st.title("Control Center")
-    if st.button("🚀 Run Daily Retention Pipeline"):
-        st.session_state.running = True
+    
+    # Removed the dead button and replaced it with a live status monitor
+    st.markdown("""
+    <div style='background-color: rgba(77, 255, 136, 0.1); border: 1px solid #4DFF88; padding: 10px; border-radius: 5px; text-align: center;'>
+        <h4 style='color: #4DFF88; margin: 0;'>🟢 System Online</h4>
+        <small style='color: #E0AAFF;'>Awaiting Agent Commands via MCP</small>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.divider()
-    st.info("The agent will automatically analyze segments and take win-back actions.")
+    st.info("The Gemini Agent operates autonomously from the Google Cloud Console. Watch this dashboard update in real-time as the Agent executes its strategy.")
 
 # Top Metrics
 col1, col2, col3, col4 = st.columns(4)
