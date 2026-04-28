@@ -218,15 +218,19 @@ def search_support_history(customer_id: int):
 
 def run_uplift_modeling(customer_id: int):
     """Causal Inference: Determine the causal impact of a discount."""
-    # Heuristic based on recency and past behavior
     conn = get_db_connection()
     cursor = conn.cursor()
-    cursor.execute("SELECT recency, purchase_count FROM customers WHERE customer_id = ?", (customer_id,))
+    # FIX: Query last_purchase_date instead of recency
+    cursor.execute("SELECT last_purchase_date, purchase_count FROM customers WHERE customer_id = ?", (customer_id,))
     row = cursor.fetchone()
     conn.close()
     
     if not row: return {"error": "Customer not found"}
-    recency, count = row
+    last_purchase_date_str, count = row
+    
+    # FIX: Calculate recency dynamically in Python
+    last_purchase = datetime.strptime(last_purchase_date_str, '%Y-%m-%d')
+    recency = (datetime.now() - last_purchase).days
     
     # Causal Heuristic
     if recency > 90 and count < 3:
