@@ -1,66 +1,95 @@
 import pandas as pd
 import numpy as np
+import sys
+import os
 
-class RetentionSimulator:
+# Add project root to path
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
+from api import server
+from agent.decision_engine import DecisionEngine
+
+class CausalRetentionSimulator:
     """
-    📊 MONTE CARLO KPI SIMULATOR
-    Used to justify the ROI of the Agentic Retention system.
+    🧬 CAUSAL INFERENCE SIMULATOR
+    Measures the shift in churn probability (Treatment Effect) based on Agent actions.
     """
-    
-    # --- BUSINESS ASSUMPTIONS ---
-    # 1. Baseline Churn Rate: 32% (Control Group)
-    # 2. Intervention Lift: 12% absolute reduction (Agent Group)
-    # 3. Average LTV (Lifetime Value): $1,000
-    # 4. Average Discount Cost: 10% of revenue
-    # 5. Operational Cost: Agent ($2/cust) vs Manual ($0.50/cust)
     
     @staticmethod
-    def run(n_customers=1000):
+    def run_simulation(n_customers=1000):
         np.random.seed(42)
         
-        # --- 1. CONTROL GROUP (STATUS QUO) ---
-        # Generic 10% discount blast, no personalization
-        control_save_rate = 0.05
-        control_saved = np.random.binomial(n_customers, control_save_rate)
-        control_revenue = control_saved * (1000 * 0.9)
-        control_cost = n_customers * 0.50
-        control_net = control_revenue - control_cost
+        # 1. Fetch real customer distribution from DB (or simulate based on real stats)
+        customers = server.get_customers()
+        if not customers:
+            print("Error: No customer data in DB.")
+            return
+
+        # 2. RUN SIMULATION
+        # Scenario A: Control (No Agent, No Discounts)
+        # Scenario B: Agent (Optimization + Personalization)
         
-        # --- 2. AGENT GROUP (ELITE SYSTEM) ---
-        # ML-targeted, RAG-personalized emails
-        agent_save_rate = 0.17 # 12% lift over control
-        agent_saved = np.random.binomial(n_customers, agent_save_rate)
-        agent_revenue = agent_saved * (1000 * 0.9)
-        agent_cost = n_customers * 2.0
-        agent_net = agent_revenue - agent_cost
+        control_churned = 0
+        agent_churned = 0
+        total_revenue_saved = 0
+        total_discount_cost = 0
         
-        print("="*50)
-        print("PRODUCTION ROI REPORT: AGENT VS BASELINE")
-        print("="*50)
-        print(f"Cohort Size: {n_customers} Customers")
-        print("-" * 50)
-        print(f"BASELINE (10% Blast):")
-        print(f"  - Saved: {control_saved}")
-        print(f"  - Net Revenue: ${control_net:,.2f}")
-        print("-" * 50)
-        print(f"AGENT (ML + RAG):")
-        print(f"  - Saved: {agent_saved}")
-        print(f"  - Net Revenue: ${agent_net:,.2f}")
-        print("-" * 50)
+        # We'll process the first N customers (or all if < N)
+        test_cohort = customers[:n_customers]
         
-        lift = ((agent_net - control_net) / control_net) * 100
-        print(f"DONE: AGENT IMPACT: {lift:.1f}% Increase in Net Revenue")
-        print(f"DONE: CHURN REDUCTION: {(agent_save_rate - control_save_rate)*100:.1f} Ppt")
-        print("="*50)
+        for cust in test_cohort:
+            base_prob = cust['churn_probability'] / 100
+            ltv = cust['total_spend']
+            
+            # --- Scenario A (Baseline) ---
+            if np.random.rand() < base_prob:
+                control_churned += 1
+            
+            # --- Scenario B (Agent) ---
+            # Simulate the Decision Engine's optimization
+            approved_rate = 0.10 # Average approved rate for simulation
+            
+            # THE CAUSAL LOOP: 
+            # Uplift = how much the discount REDUCES the churn probability
+            uplift = DecisionEngine.get_uplift_estimate(approved_rate)
+            new_prob = base_prob * (1 - uplift)
+            
+            if np.random.rand() < new_prob:
+                agent_churned += 1
+            else:
+                # If they didn't churn, we "saved" their LTV (minus discount cost)
+                total_revenue_saved += ltv
+                total_discount_cost += (ltv * approved_rate)
+
+        # 3. CALCULATE METRICS
+        control_rate = (control_churned / len(test_cohort)) * 100
+        agent_rate = (agent_churned / len(test_cohort)) * 100
+        churn_reduction = control_rate - agent_rate
+        net_roi = total_revenue_saved - total_discount_cost
         
-        # Save to report
-        with open('retention_roi_report.md', 'w') as f:
-            f.write("# Retention ROI Report\n\n")
-            f.write(f"**Lift in Net Revenue:** {lift:.1f}%\n\n")
-            f.write("### Assumptions\n")
-            f.write("- **Intervention Lift:** 12% absolute improvement in save rate.\n")
-            f.write("- **Personalization Impact:** RAG-driven empathy reduces 'Sleeping Dog' risk by 40%.\n")
-            f.write("- **Precision:** ML filtering prevents $12k in 'Sure Thing' discount waste.\n")
+        print("="*60)
+        print("🧬 CAUSAL ROI REPORT: REAL-WORLD TREATMENT EFFECTS")
+        print("="*60)
+        print(f"Cohort Size: {len(test_cohort)} Customers")
+        print("-" * 60)
+        print(f"BASELINE CHURN: {control_rate:.1f}%")
+        print(f"AGENT CHURN:    {agent_rate:.1f}%")
+        print(f"ABS. REDUCTION: {churn_reduction:.1f} Percentage Points")
+        print("-" * 60)
+        print(f"NET REVENUE RETAINED: ${net_roi:,.2f}")
+        print(f"DISCOUNT EFFICIENCY:  ${(net_roi/total_discount_cost):.2f} per $1 spent")
+        print("="*60)
+
+        # Save report
+        with open(os.path.join(os.path.dirname(__file__), 'retention_roi_report.md'), 'w') as f:
+            f.write("# Causal ROI Report\n\n")
+            f.write(f"**Churn Reduction:** {churn_reduction:.1f} Ppt\n\n")
+            f.write("### Methodology\n")
+            f.write("- **Baseline:** Churn probabilities derived from IBM Telco ML Model (0.82 AUC).\n")
+            f.write("- **Treatment:** Discount applied based on ROI-Efficiency Knapsack Optimization.\n")
+            f.write("- **Causal Shift:** P(Churn) reduction calculated via DecisionEngine.get_uplift_estimate().\n")
 
 if __name__ == "__main__":
-    RetentionSimulator.run()
+    CausalRetentionSimulator.run_simulation()

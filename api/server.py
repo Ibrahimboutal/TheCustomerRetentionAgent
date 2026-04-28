@@ -34,7 +34,9 @@ try:
         SCALER = pickle.load(f)
     with open(os.path.join(ML_DIR, 'feature_names.pkl'), 'rb') as f:
         FEATURE_NAMES = pickle.load(f)
-    print("DONE: Production ML Model loaded successfully from /ml.")
+    with open(os.path.join(ML_DIR, 'encoders.pkl'), 'rb') as f:
+        ENCODERS = pickle.load(f)
+    print("DONE: Real-world Telco model and Encoders loaded successfully.")
 except Exception as e:
     CHURN_MODEL = None
     print(f"WARN: Could not load ML model: {e}")
@@ -65,13 +67,14 @@ def get_customers():
     if df.empty or CHURN_MODEL is None:
         return df.to_dict(orient="records")
 
-    # PREDICT CHURN LIVE USING PRODUCTION MODEL
-    # Features: tenure_days, support_tickets_30d, login_frequency, payment_failures, total_spend, recency
-    today = datetime.now()
-    df['last_purchase_date'] = pd.to_datetime(df['last_purchase_date'])
-    df['recency'] = (today - df['last_purchase_date']).dt.days
+    # PREDICT CHURN LIVE USING REAL TELCO MODEL
+    X = df[FEATURE_NAMES].copy()
     
-    X = df[FEATURE_NAMES]
+    # Apply Label Encoding for Categorical columns
+    for col, le in ENCODERS.items():
+        if col in X.columns:
+            X[col] = le.transform(X[col])
+            
     X_scaled = SCALER.transform(X)
     df['churn_probability'] = (CHURN_MODEL.predict_proba(X_scaled)[:, 1] * 100).round(1)
     
@@ -92,31 +95,25 @@ def explain_churn_risk(customer_id: int):
     customer = df.iloc[0]
     
     reasons = []
-    if customer['payment_failures'] > 1:
-        reasons.append(f"High risk due to {customer['payment_failures']} payment failures.")
-    if customer['support_tickets_30d'] > 3:
-        reasons.append(f"High volume of support tickets ({customer['support_tickets_30d']}) indicates frustration.")
-    if customer['login_frequency'] < 5:
-        reasons.append(f"Low engagement detected ({customer['login_frequency']} logins/mo).")
+    if customer['Contract'] == 'Month-to-month':
+        reasons.append("High risk due to non-binding 'Month-to-month' contract.")
+    if customer['InternetService'] == 'Fiber optic':
+        reasons.append("Fiber optic users show higher churn rates in this segment.")
+    if customer['tenure'] < 12:
+        reasons.append(f"Early-stage user (Tenure: {customer['tenure']} months).")
         
-    # Standardize and predict live for the probability in the explanation
-    today = datetime.now()
-    last_purchase = datetime.strptime(customer['last_purchase_date'], '%Y-%m-%d')
-    recency = (today - last_purchase).days
-    
-    features = pd.DataFrame([[
-        customer['tenure_days'], customer['support_tickets_30d'], 
-        customer['login_frequency'], customer['payment_failures'], 
-        customer['total_spend'], recency
-    ]], columns=FEATURE_NAMES)
-    
-    risk = (CHURN_MODEL.predict_proba(SCALER.transform(features))[0, 1] * 100).round(1)
+    X = df[FEATURE_NAMES].copy()
+    for col, le in ENCODERS.items():
+        if col in X.columns:
+            X[col] = le.transform(X[col])
+            
+    risk = (CHURN_MODEL.predict_proba(SCALER.transform(X))[0, 1] * 100).round(1)
     
     return {
         "customer": customer['name'],
         "churn_probability": f"{risk}%",
-        "top_contributing_factors": reasons if reasons else ["No high-risk indicators detected.", "Consistent spend history."],
-        "ml_inference_note": "Risk calculated using Random Forest Ensemble on RFM and Support features."
+        "top_contributing_factors": reasons if reasons else ["Stable customer profile."],
+        "ml_inference_note": "Risk calculated using IBM Telco RandomForest Model (Real Data)."
     }
     conn = get_db_connection()
     df = pd.read_sql_query("SELECT * FROM customers", conn)
