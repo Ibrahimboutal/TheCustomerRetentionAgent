@@ -1,0 +1,14 @@
+fastapi
+uvicorn
+pandas
+plotly
+streamlit
+scikit-learn
+requests
+seaborn
+matplotlib
+google-generativeai
+econml
+gTTS
+scipy
+streamlit-autorefresh

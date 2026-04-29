@@ -1,74 +1,77 @@
-# 🤖 Professional Customer Retention Agent (Enterprise Suite)
+# 🤖 The Causal Customer Retention Agent
+*A submission for the **Google Cloud Rapid Agent Hackathon** on Devpost.*
 
-This is a production-grade AI system that bridges the gap between **Generative AI** and **Deterministic Machine Learning**. It automates customer retention by identifying churn risk, enforcing financial policies, and executing personalized recovery strategies.
-
-## 🏗️ Professional Architecture
-The project is structured into modular domains to reflect real-world engineering standards:
-
-- **`/ml`**: The Data Science Pipeline (Synthetic Data → Training → EDA → Performance Reports).
-- **`/agent`**: The Deterministic Decision Engine (Rules-based guardrails).
-- **`/api`**: FastAPI-powered MCP server for tool orchestration.
-- **`/data`**: Persistence layer (SQLite) and CRM initialization.
-- **`/eval`**: ROI Simulations and Agent Evaluation suites.
-- **`/ui`**: Premium Streamlit monitoring dashboard.
+**The Problem:** Traditional "AI" chatbots just answer questions. They don't take action, and they certainly don't understand the strict mathematical constraints of an enterprise budget. 
+**The Solution:** An autonomous Agentic system powered by Gemini 1.5 Pro, Model Context Protocol (MCP), and True Causal AI (EconML) that actively saves high-value customers while proving its ROI mathematically.
 
 ---
 
-## 📊 ML Pipeline & Performance
-The "Brain" of the system is a **Random Forest Classifier** trained on 10,000 behavioral records.
-- **ROC-AUC Score:** 0.9171
-- **Features:** Tenure, Support Tickets, Login Frequency, Payment Failures, Spend, Recency.
-- **Deep Evaluation:** See `ml/model_performance_report.md` for full classification metrics and confusion matrices.
+## 🌟 Key Hackathon Integrations & Features
 
----
+### 1. 🧠 Google Cloud Agent Builder & Gemini 1.5 Pro
+- **Multimodal Voice RAG:** Instead of relying solely on text transcripts, the Agent natively ingests `.mp3` recordings of angry customer support calls using the **Google Generative AI File API**. Gemini 1.5 Pro natively listens to the audio to detect frustration, tone, and sarcasm to draft highly empathetic recovery emails.
+- **The Agentic Boardroom:** Replacing simple Human-in-the-Loop constraints, we built a real-time multi-agent debate system. Three distinct Gemini personas (Customer Success, CFO, and Orchestrator) argue over budget allocations in real-time.
 
-## 🛡️ Deterministic Decision Engine
-Unlike simple "LLM-decides" agents, this system uses a **Sandwiched Logic** layer:
-1. **The Model** predicts the risk (Probability).
-2. **The Decision Engine** (`agent/decision_engine.py`) maps the risk to a financial strategy (Max Discount).
-3. **The Agent** executes the strategy with personalized empathy (RAG).
+### 2. 🔌 Model Context Protocol (MCP) Server
+- The entire system is architected around a robust **FastAPI MCP Server** (`api/server.py`).
+- It exposes 15 specialized tools (e.g., `initiate_boardroom_debate`, `get_uplift`, `simulate_revenue`, `draft_email`) allowing the frontend UI or external orchestrators to trigger advanced operations dynamically.
 
----
+### 3. 🎯 True Causal AI (Microsoft EconML)
+- **Beyond Prediction:** We don't just predict *who* will churn. We use an **X-Learner** (trained with EconML and Random Forests) to calculate the precise Individual Treatment Effect (ITE) of a discount.
+- **ROI Optimization:** This guarantees the Agent never wastes margin on "Sure Things" or triggers churn in "Sleeping Dogs."
 
-## 📈 Proven Business Impact
-We use **Monte Carlo Simulations** to prove the ROI of the agent before deployment.
-- **Net Revenue Lift:** ~210% increase compared to baseline "Email Blasts".
-- **Churn Reduction:** 12.0 percentage point absolute improvement.
-- **Efficiency:** Prevents discount waste on "Sure Things" and avoids "Sleeping Dog" churn.
+### 4. ⚡ The Time Machine Simulator
+- A live gamified Streamlit dashboard where judges can inject a "Macro-Economic Shock" (e.g., Competitor drops prices by 30%).
+- The system instantly re-calculates the entire cohort's churn risk, triggers a **SciPy Sequential Least Squares Programming (SLSQP)** optimization to re-allocate a strict $5,000 budget, and autonomously drafts targeted recovery campaigns for the highest-LTV users.
 
 ---
 
 ## 🚀 Setup & Execution
 
-### 1. Installation
+### 1. Prerequisites
+Ensure you have Python 3.10+ installed.
+
 ```bash
-pip install fastapi uvicorn pandas plotly streamlit scikit-learn requests seaborn matplotlib
+git clone https://github.com/Ibrahimboutal/TheCustomerRetentionAgent.git
+cd TheCustomerRetentionAgent
+pip install -r requirements.txt
 ```
 
-### 2. The Analytical Core
+### 2. Set API Key
+Export your Gemini API Key:
 ```bash
-# Initialize data, train model, and run EDA
+export GOOGLE_API_KEY="your_api_key_here"
+```
+
+### 3. Initialize the Analytical Core & Audio RAG
+Generate the SQLite database, train the ML models, and generate the synthetic `.mp3` support calls for the Voice RAG module:
+```bash
 python data/crm_init.py
 python ml/train_model.py
-python ml/generate_eda_report.py
+python ml/train_uplift.py
+python data/generate_audio_logs.py
 ```
 
-### 3. Running the System
-**Terminal 1 (Server):**
+### 4. Launch the System
+You need two terminal windows to run the MCP Server and the UI Dashboard simultaneously.
+
+**Terminal 1 (The MCP API Server):**
 ```bash
 uvicorn api.server:app --port 8000
 ```
 
-**Terminal 2 (Dashboard):**
+**Terminal 2 (The Streamlit Control Center):**
 ```bash
 streamlit run ui/app.py
 ```
 
-### 4. Evaluation
-```bash
-python eval/simulate_kpis.py
-python eval/agent_eval.py
-```
-
 ---
-*Created for the Advanced Agentic Coding Hackathon - Engineering Trust in AI.*
+
+## 🏆 Hackathon Judging Criteria Met
+
+- **Technological Implementation:** Complex orchestration of FastAPI, Streamlit, SciPy SLSQP optimization, EconML X-Learners, and Gemini 1.5 Pro multimodal audio RAG.
+- **Design:** A premium, dark-mode, neon-styled Streamlit UI that acts as an enterprise control center, making complex math highly visual and actionable.
+- **Quality of the Idea:** Moving agents from simple "chat wrappers" to constrained, mathematically rigorous, business-driving engines.
+
+## License
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
