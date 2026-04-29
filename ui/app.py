@@ -122,13 +122,15 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
 
 def load_data():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn.execute('PRAGMA journal_mode=WAL;')
     df = pd.read_sql_query("SELECT * FROM customers", conn)
     conn.close()
     return df
 
 def fetch_agent_logs():
-    conn = sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn.execute('PRAGMA journal_mode=WAL;')
     logs = pd.read_sql_query("SELECT * FROM agent_logs ORDER BY timestamp DESC LIMIT 20", conn)
     conn.close()
     return logs

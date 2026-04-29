@@ -34,7 +34,7 @@ class DecisionEngine:
         
         # Initial guess: equal distribution of budget
         x0 = np.full(n, (budget / sum(ltvs)) if sum(ltvs) > 0 else 0)
-        x0 = np.clip(x0, 0, 0.3)
+        x0 = np.clip(x0, 0, 0.29)
 
         # Objective Function: MINIMIZE negative Expected Revenue Retained
         def objective(discounts):

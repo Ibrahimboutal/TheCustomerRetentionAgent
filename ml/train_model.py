@@ -40,7 +40,7 @@ def train():
     df['Churn'] = df['Churn'].apply(lambda x: 1 if x == 'Yes' else 0)
     
     # Define features
-    features = ['tenure', 'MonthlyCharges', 'TotalCharges', 'SeniorCitizen'] + cat_cols
+    features = ['tenure', 'MonthlyCharges', 'SeniorCitizen'] + cat_cols
     X = df[features]
     y = df['Churn']
     

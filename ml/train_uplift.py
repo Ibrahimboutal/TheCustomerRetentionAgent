@@ -78,7 +78,7 @@ def train_uplift():
         encoders[col] = LabelEncoder()
         df[col] = encoders[col].fit_transform(df[col])
         
-    features = ['tenure', 'MonthlyCharges', 'TotalCharges', 'SeniorCitizen'] + cat_cols
+    features = ['tenure', 'MonthlyCharges', 'SeniorCitizen'] + cat_cols
     X = df[features]
     T = df['T']
     Y = df['Y'] # Outcome: Retained (1) or Churned (0)

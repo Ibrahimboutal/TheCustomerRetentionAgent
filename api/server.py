@@ -13,9 +13,21 @@ from sklearn.preprocessing import StandardScaler as SkScaler
 
 import google.generativeai as genai
 import os
+from fastapi import Security, HTTPException, status, Depends
+from fastapi.security import APIKeyHeader
+
+api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+def get_api_key(api_key_header: str = Security(api_key_header)):
+    if api_key_header != "HACKATHON_SECRET_123":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or missing API Key",
+        )
+    return api_key_header
 
 # Initialize FastAPI app
-app = FastAPI(title="Retention CRM MCP Server", version="1.0.0")
+app = FastAPI(title="Retention CRM MCP Server", version="1.0.0", dependencies=[Depends(get_api_key)])
 
 # Configure Gemini
 GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
@@ -66,7 +78,9 @@ except Exception as e:
     print(f"WARN: Could not load Uplift model: {e}")
 
 def get_db_connection():
-    return sqlite3.connect(DB_PATH)
+    conn = sqlite3.connect(DB_PATH, timeout=10.0)
+    conn.execute('PRAGMA journal_mode=WAL;')
+    return conn
 
 def log_agent_action(tool_name: str, arguments: dict, result: any):
     """Logs an agent tool execution to the database for real-time monitoring."""
@@ -362,6 +376,7 @@ def search_support_history(customer_id: int):
     if audio_row and GEMINI_API_KEY:
         audio_path = audio_row[0]
         if os.path.exists(audio_path):
+            uploaded_file = None
             try:
                 # 1. Upload to Gemini File API
                 uploaded_file = genai.upload_file(audio_path)
@@ -376,11 +391,11 @@ def search_support_history(customer_id: int):
                     "audio_file": os.path.basename(audio_path),
                     "gemini_multimodal_insight": response.text.strip()
                 }
-                
-                # Clean up
-                genai.delete_file(uploaded_file.name)
             except Exception as e:
                 result["audio_analysis"] = {"error": f"Audio processing failed: {e}"}
+            finally:
+                if uploaded_file:
+                    genai.delete_file(uploaded_file.name)
                 
     return result
 
@@ -399,7 +414,9 @@ def run_uplift_modeling(customer_id: int):
             try:
                 X[col] = le.transform(X[col])
             except ValueError:
-                X[col] = 0
+                # Map unseen to the first known class
+                fallback = le.classes_[0]
+                X[col] = le.transform([fallback])[0]
                 
     X_scaled = UPLIFT_SCALER.transform(X)
     ite_score = UPLIFT_MODEL.effect(X_scaled)[0]
