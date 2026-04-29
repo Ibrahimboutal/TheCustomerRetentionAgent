@@ -1,6 +1,7 @@
 from fastapi import FastAPI, Response, Request
 import sqlite3
 import pandas as pd
+import numpy as np
 from datetime import datetime, timedelta
 import random
 import string
@@ -48,6 +49,21 @@ try:
 except Exception as e:
     CHURN_MODEL = None
     print(f"WARN: Could not load ML model: {e}")
+
+# --- LOAD UPLIFT MODEL ---
+try:
+    with open(os.path.join(ML_DIR, 'uplift_model.pkl'), 'rb') as f:
+        UPLIFT_MODEL = pickle.load(f)
+    with open(os.path.join(ML_DIR, 'uplift_scaler.pkl'), 'rb') as f:
+        UPLIFT_SCALER = pickle.load(f)
+    with open(os.path.join(ML_DIR, 'uplift_features.pkl'), 'rb') as f:
+        UPLIFT_FEATURES = pickle.load(f)
+    with open(os.path.join(ML_DIR, 'uplift_encoders.pkl'), 'rb') as f:
+        UPLIFT_ENCODERS = pickle.load(f)
+    print("DONE: Causal Uplift model loaded successfully.")
+except Exception as e:
+    UPLIFT_MODEL = None
+    print(f"WARN: Could not load Uplift model: {e}")
 
 def get_db_connection():
     return sqlite3.connect(DB_PATH)
@@ -325,32 +341,51 @@ def search_support_history(customer_id: int):
     return {"status": "success", "logs": [{"date": r[1], "transcript": r[0]} for r in rows]}
 
 def run_uplift_modeling(customer_id: int):
-    """Causal Inference: Determine the causal impact of a discount."""
+    """Causal Inference: Determine the exact causal impact of a discount using Causal AI."""
     conn = get_db_connection()
-    cursor = conn.cursor()
-    # Use tenure and Contract as proxies for loyalty and risk
-    cursor.execute("SELECT tenure, Contract, TotalCharges FROM customers WHERE customer_id = ?", (customer_id,))
-    row = cursor.fetchone()
+    df = pd.read_sql_query("SELECT * FROM customers WHERE customer_id = ?", conn, params=(customer_id,))
     conn.close()
     
-    if not row: return {"error": "Customer not found"}
-    tenure, contract, total_charges = row
-    
-    # Causal Heuristic based on Tenure and Contract
-    if tenure < 6 and contract == 'Month-to-month':
-        quadrant = "Persuadables"
-        advice = "High Causal Uplift! New users on month-to-month are very sensitive to price and easy to save."
-    elif tenure > 24 and contract != 'Month-to-month':
-        quadrant = "Sure Things"
-        advice = "Long-term loyal customers. Will stay anyway. Offering a discount reduces margins unnecessarily."
-    elif tenure < 12 and total_charges < 500:
-        quadrant = "Lost Causes"
-        advice = "Low tenure and low spend. Low probability of long-term retention."
-    else:
-        quadrant = "Sleeping Dogs"
-        advice = "Risky. They are stable but could be reminded to cancel if contacted."
+    if df.empty: return {"error": "Customer not found"}
+    if UPLIFT_MODEL is None: return {"error": "Uplift model not loaded."}
         
-    return {"customer_id": customer_id, "uplift_quadrant": quadrant, "recommendation": advice}
+    X = df[UPLIFT_FEATURES].copy()
+    for col, le in UPLIFT_ENCODERS.items():
+        if col in X.columns:
+            try:
+                X[col] = le.transform(X[col])
+            except ValueError:
+                X[col] = 0
+                
+    X_scaled = UPLIFT_SCALER.transform(X)
+    ite_score = UPLIFT_MODEL.effect(X_scaled)[0]
+    
+    if isinstance(ite_score, np.ndarray):
+        ite_score = float(ite_score[0])
+    else:
+        ite_score = float(ite_score)
+        
+    ite_percentage = round(ite_score * 100, 2)
+    
+    if ite_percentage >= 10.0:
+        quadrant = "Persuadables"
+        advice = f"High Causal Uplift (+{ite_percentage}%). Applying a discount directly causes a high probability of retention. Maximize budget."
+    elif ite_percentage <= -5.0:
+        quadrant = "Sleeping Dogs"
+        advice = f"Negative Causal Uplift ({ite_percentage}%). Contacting with a discount will actively trigger churn. Do not contact."
+    elif ite_percentage > 0.0:
+        quadrant = "Sure Things"
+        advice = f"Low Causal Uplift (+{ite_percentage}%). Stable probability of staying regardless of discount. Do not waste margin."
+    else:
+        quadrant = "Lost Causes"
+        advice = f"Zero/Negative Impact ({ite_percentage}%). Likely to churn regardless of intervention."
+
+    return {
+        "customer_id": customer_id, 
+        "uplift_quadrant": quadrant, 
+        "ite_score": f"{ite_percentage}%",
+        "recommendation": advice
+    }
 
 def simulate_outcome(customer_id: int):
     """The 'Time Machine': Simulates the real-world response of a customer to the agent's actions."""
@@ -497,7 +532,7 @@ def initiate_boardroom_debate(customer_id: int):
     - Monthly Charges: ${customer['MonthlyCharges']}
     - Total Charges: ${customer['TotalCharges']}
     - Churn Risk: {risk_info['churn_probability']}
-    - Uplift Quadrant: {uplift_info['uplift_quadrant']}
+    - Uplift Quadrant: {uplift_info['uplift_quadrant']} (ITE Score: {uplift_info.get('ite_score', 'N/A')})
     - Support History: {support_info['status']} (Logs: {support_info.get('logs', 'None')})
     """
     
