@@ -10,8 +10,16 @@ import pickle
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler as SkScaler
 
+import google.generativeai as genai
+import os
+
 # Initialize FastAPI app
 app = FastAPI(title="Retention CRM MCP Server", version="1.0.0")
+
+# Configure Gemini
+GEMINI_API_KEY = os.environ.get("GOOGLE_API_KEY", "")
+if GEMINI_API_KEY:
+    genai.configure(api_key=GEMINI_API_KEY)
 
 import os
 import sys
@@ -320,31 +328,27 @@ def run_uplift_modeling(customer_id: int):
     """Causal Inference: Determine the causal impact of a discount."""
     conn = get_db_connection()
     cursor = conn.cursor()
-    # FIX: Query last_purchase_date instead of recency
-    cursor.execute("SELECT last_purchase_date, purchase_count FROM customers WHERE customer_id = ?", (customer_id,))
+    # Use tenure and Contract as proxies for loyalty and risk
+    cursor.execute("SELECT tenure, Contract, TotalCharges FROM customers WHERE customer_id = ?", (customer_id,))
     row = cursor.fetchone()
     conn.close()
     
     if not row: return {"error": "Customer not found"}
-    last_purchase_date_str, count = row
+    tenure, contract, total_charges = row
     
-    # FIX: Calculate recency dynamically in Python
-    last_purchase = datetime.strptime(last_purchase_date_str, '%Y-%m-%d')
-    recency = (datetime.now() - last_purchase).days
-    
-    # Causal Heuristic
-    if recency > 90 and count < 3:
-        quadrant = "Lost Causes"
-        advice = "Low probability of retention. Do not waste budget."
-    elif recency <= 30:
-        quadrant = "Sure Things"
-        advice = "Will stay anyway. Offering a discount reduces margins unnecessarily."
-    elif 30 < recency <= 90:
+    # Causal Heuristic based on Tenure and Contract
+    if tenure < 6 and contract == 'Month-to-month':
         quadrant = "Persuadables"
-        advice = "High Causal Uplift! A discount here is likely to prevent churn."
+        advice = "High Causal Uplift! New users on month-to-month are very sensitive to price and easy to save."
+    elif tenure > 24 and contract != 'Month-to-month':
+        quadrant = "Sure Things"
+        advice = "Long-term loyal customers. Will stay anyway. Offering a discount reduces margins unnecessarily."
+    elif tenure < 12 and total_charges < 500:
+        quadrant = "Lost Causes"
+        advice = "Low tenure and low spend. Low probability of long-term retention."
     else:
         quadrant = "Sleeping Dogs"
-        advice = "Risky. Contacting them might remind them to cancel."
+        advice = "Risky. They are stable but could be reminded to cancel if contacted."
         
     return {"customer_id": customer_id, "uplift_quadrant": quadrant, "recommendation": advice}
 
@@ -466,6 +470,67 @@ def flag_for_sms_campaign(customer_id: int):
     conn.commit()
     conn.close()
     return {"status": "success", "customer_id": customer_id, "message": "Added to SMS queue"}
+
+def initiate_boardroom_debate(customer_id: int):
+    """
+    ⚖️ THE AGENTIC BOARDROOM:
+    Three Gemini personas (Success, CFO, Orchestrator) debate the retention strategy.
+    """
+    # 1. Gather Data
+    conn = get_db_connection()
+    df = pd.read_sql_query("SELECT * FROM customers WHERE customer_id = ?", conn, params=(customer_id,))
+    conn.close()
+    
+    if df.empty:
+        return {"error": "Customer not found"}
+    
+    customer = df.iloc[0]
+    risk_info = explain_churn_risk(customer_id)
+    uplift_info = run_uplift_modeling(customer_id)
+    support_info = search_support_history(customer_id)
+    
+    # 2. Setup Personas
+    context = f"""
+    CUSTOMER DATA:
+    - Name: {customer['name']}
+    - Tenure: {customer['tenure']} months
+    - Monthly Charges: ${customer['MonthlyCharges']}
+    - Total Charges: ${customer['TotalCharges']}
+    - Churn Risk: {risk_info['churn_probability']}
+    - Uplift Quadrant: {uplift_info['uplift_quadrant']}
+    - Support History: {support_info['status']} (Logs: {support_info.get('logs', 'None')})
+    """
+    
+    if not GEMINI_API_KEY:
+        # Simulation Mode if no API Key
+        debate = [
+            {"agent": "Customer Success Agent", "text": f"We must save {customer['name']}! Their tenure is {customer['tenure']} months. A 20% discount is a small price for loyalty."},
+            {"agent": "CFO Agent", "text": f"Wait, {customer['name']} is a '{uplift_info['uplift_quadrant']}'. If they are a Sure Thing, a discount is wasted margin. If they are a Lost Cause, it's a lost investment. I recommend $0."},
+            {"agent": "Orchestrator", "text": f"Decision: Based on the {risk_info['churn_probability']} risk, we will offer a 15% discount but only for 3 months to balance retention and ROI."}
+        ]
+        return {"status": "simulated", "transcript": debate}
+
+    model = genai.GenerativeModel('gemini-1.5-flash')
+    
+    # Customer Success Persona
+    success_prompt = f"You are the Customer Success Agent. Argue passionately to give the maximum possible discount (30%) to save {customer['name']}. Cite their history and value. Context: {context}"
+    success_resp = model.generate_content(success_prompt).text
+    
+    # CFO Persona
+    cfo_prompt = f"You are the CFO Agent. You are skeptical and focused on ROI. Argue to give $0 discount to {customer['name']}, citing that they are a {uplift_info['uplift_quadrant']} and it might be a waste of margin. Context: {context}"
+    cfo_resp = model.generate_content(cfo_prompt).text
+    
+    # Orchestrator Persona
+    orch_prompt = f"You are the Boardroom Orchestrator. You have heard the Customer Success Agent and the CFO Agent. Look at the data and make a final ruling on the discount rate (0% to 30%). Provide a concise final decision. \nCS Argument: {success_resp}\nCFO Argument: {cfo_resp}\nContext: {context}"
+    orch_resp = model.generate_content(orch_prompt).text
+    
+    debate = [
+        {"agent": "Customer Success Agent", "text": success_resp.strip()},
+        {"agent": "CFO Agent", "text": cfo_resp.strip()},
+        {"agent": "Orchestrator", "text": orch_resp.strip()}
+    ]
+    
+    return {"status": "success", "transcript": debate}
 
 # --- MCP HUB (THE JSON-RPC HANDSHAKE) ---
 
@@ -627,6 +692,15 @@ async def mcp_hub(request: dict):
                             "properties": {"customer_id": {"type": "integer"}},
                             "required": ["customer_id"]
                         }
+                    },
+                    {
+                        "name": "initiate_boardroom_debate",
+                        "description": "The Agentic Boardroom: Deploy three Gemini personas to debate the retention decision in real-time.",
+                        "inputSchema": {
+                            "type": "object",
+                            "properties": {"customer_id": {"type": "integer"}},
+                            "required": ["customer_id"]
+                        }
                     }
                 ]
             }
@@ -669,6 +743,8 @@ async def mcp_hub(request: dict):
             result = run_uplift_modeling(args.get("customer_id"))
         elif tool_name == "simulate_outcome":
             result = simulate_outcome(args.get("customer_id"))
+        elif tool_name == "initiate_boardroom_debate":
+            result = initiate_boardroom_debate(args.get("customer_id"))
         else:
             return {"jsonrpc": "2.0", "id": request_id, "error": {"code": -32601, "message": "Tool not found"}}
 

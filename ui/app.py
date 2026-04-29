@@ -87,16 +87,22 @@ st.markdown("""
         line-height: 1.4;
     }
     
-    .marketing-voice {
-        color: #FF79C6;
+    .customer-success-voice {
+        color: #4DFF88;
         font-weight: bold;
-        border-bottom: 1px solid #FF79C6;
+        border-bottom: 1px solid #4DFF88;
     }
     
-    .finance-voice {
-        color: #F1FA8C;
+    .cfo-voice {
+        color: #FF4D4D;
         font-weight: bold;
-        border-bottom: 1px solid #F1FA8C;
+        border-bottom: 1px solid #FF4D4D;
+    }
+
+    .orchestrator-voice {
+        color: #FFD700;
+        font-weight: bold;
+        border-bottom: 1px solid #FFD700;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -215,16 +221,42 @@ with tab3:
     else:
         for idx, row in agent_logs.iterrows():
             content = row['result']
-            # Highlight boardroom debate voices
-            content = content.replace("Marketing:", "<span class='marketing-voice'>Marketing:</span>")
-            content = content.replace("Finance:", "<span class='finance-voice'>Finance:</span>")
+            
+            # Handle Boardroom Debate Transcript
+            if "transcript" in content and "initiate_boardroom_debate" in row['tool_name']:
+                try:
+                    # Parse the result string if it's a string representation of a dict
+                    if isinstance(content, str):
+                        import ast
+                        result_dict = ast.literal_eval(content)
+                    else:
+                        result_dict = content
+                    
+                    transcript = result_dict.get('transcript', [])
+                    debate_html = "<div style='margin-top: 10px; border-left: 2px solid #7B2CBF; padding-left: 15px;'>"
+                    for entry in transcript:
+                        agent = entry['agent']
+                        text = entry['text']
+                        voice_class = "orchestrator-voice"
+                        if "Success" in agent: voice_class = "customer-success-voice"
+                        elif "CFO" in agent: voice_class = "cfo-voice"
+                        
+                        debate_html += f"<p><span class='{voice_class}'>{agent}:</span> {text}</p>"
+                    debate_html += "</div>"
+                    content = debate_html
+                except Exception as e:
+                    content = f"Error rendering debate: {e}<br>{content}"
+            else:
+                # Fallback for other tools or legacy logs
+                content = content.replace("Marketing:", "<span class='customer-success-voice'>Marketing:</span>")
+                content = content.replace("Finance:", "<span class='cfo-voice'>Finance:</span>")
             
             st.markdown(f"""
             <div class='log-container'>
                 <span style='color: #9D4EDD;'>[{row['timestamp']}]</span> 
                 <b>{row['tool_name']}</b><br>
                 <small>Args: {row['arguments']}</small><br>
-                <span style='color: #4DFF88;'>Result: {content}</span>
+                <div style='color: #E0AAFF;'>Result: {content}</div>
             </div>
             """, unsafe_allow_html=True)
 
