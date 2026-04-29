@@ -5,6 +5,16 @@ import plotly.express as px
 import time
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
+import sys
+import os
+import numpy as np
+
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if BASE_DIR not in sys.path:
+    sys.path.append(BASE_DIR)
+
+from api.server import get_customers, draft_email_logic
+from agent.decision_engine import DecisionEngine
 
 # Page config for premium feel
 st.set_page_config(
@@ -144,6 +154,11 @@ with st.sidebar:
     """, unsafe_allow_html=True)
     
     st.divider()
+    st.markdown("### ⚡ Time Machine Simulator")
+    shock_value = st.slider("Competitor Price Drop (%)", 0, 50, 0)
+    inject_shock = st.button("Inject Macro-Economic Shock ⚡")
+    
+    st.divider()
     st.info("The Gemini Agent operates autonomously from the Google Cloud Console. Watch this dashboard update in real-time as the Agent executes its strategy.")
 
 # Top Metrics
@@ -160,6 +175,76 @@ with col4:
     revenue = f"${df['TotalCharges'].sum():,.0f}"
     st.markdown(f"<div class='metric-card'><h3>Total Revenue</h3><h2>{revenue}</h2></div>", unsafe_allow_html=True)
 
+st.write("---")
+
+if inject_shock and shock_value > 0:
+    st.session_state['shock_injected'] = True
+    st.session_state['shock_value'] = shock_value
+    
+    # Run the live simulation
+    with st.spinner("Agentic System re-calculating risk and re-running SciPy Optimization..."):
+        # Fetch live data with base probabilities
+        customers = get_customers()
+        sim_df = pd.DataFrame(customers)
+        
+        # Inject Shock
+        sim_df['base_probability'] = sim_df['churn_probability']
+        # For a 50% price drop, increase churn risk proportionally (e.g. up to +40% absolute)
+        shock_impact = (shock_value / 50.0) * 40.0
+        sim_df['churn_probability'] = np.clip(sim_df['churn_probability'] + shock_impact, 0, 100)
+        
+        # Re-run SciPy Optimization
+        allocated, total_spend = DecisionEngine.optimize_cohort_discounts(sim_df, budget=5000)
+        
+        st.session_state['sim_df'] = sim_df
+        st.session_state['allocations'] = allocated
+        st.session_state['total_spend'] = total_spend
+
+if st.session_state.get('shock_injected'):
+    st.markdown("## ⚡ Time Machine Simulation Results")
+    st.warning(f"**Macro-Economic Shock Injected:** Competitor dropped prices by {st.session_state['shock_value']}%. Global churn risk surged.")
+    
+    sim_df = st.session_state['sim_df']
+    allocated = st.session_state['allocations']
+    total_spend = st.session_state['total_spend']
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Original Average Churn Risk", f"{sim_df['base_probability'].mean():.1f}%")
+    c2.metric("New Average Churn Risk", f"{sim_df['churn_probability'].mean():.1f}%", f"+{(sim_df['churn_probability'].mean() - sim_df['base_probability'].mean()):.1f}%", delta_color="inverse")
+    c3.metric("Budget Re-Allocated", f"${total_spend:,.0f}", "$5,000 Cap")
+    
+    st.markdown("### 🤖 Agentic Response: Live SciPy Allocation & Automated Campaigns")
+    
+    # Filter to newly at risk people who got a discount
+    at_risk_saved = []
+    for i, row in sim_df.iterrows():
+        if row['customer_id'] in allocated:
+            at_risk_saved.append({
+                "Customer": row['name'],
+                "New Churn Risk": f"{row['churn_probability']:.1f}%",
+                "Discount Allocated": f"{allocated[row['customer_id']]['rate']*100:.1f}%",
+                "LTV": f"${row['TotalCharges']:,.2f}",
+                "customer_id": row['customer_id'],
+                "segment": row['segment']
+            })
+            
+    alloc_df = pd.DataFrame(at_risk_saved)
+    if not alloc_df.empty:
+        st.dataframe(alloc_df.drop(columns=['customer_id', 'segment']), use_container_width=True)
+        
+        st.markdown("### 📧 Auto-Drafted Recovery Emails")
+        # Ensure 'LTV' is numeric for sorting by converting it back from string
+        alloc_df['numeric_ltv'] = alloc_df['LTV'].replace(r'[\$,]', '', regex=True).astype(float)
+        top_targets = alloc_df.sort_values(by="numeric_ltv", ascending=False).head(3)
+        for _, target in top_targets.iterrows():
+            email_body = draft_email_logic(target['customer_id'], target['segment'])
+            # draft_email_logic might return a dict {"error": ...}
+            if isinstance(email_body, dict):
+                email_body = email_body.get('message', 'Email drafting error.')
+            st.info(f"**To: {target['Customer']}**\n\n{email_body}\n\n*Agent Note: Offering {target['Discount Allocated']} discount to protect {target['LTV']} LTV from competitor shock.*")
+    else:
+        st.success("No discounts allocated. The optimizer determined no budget could yield positive ROI.")
+        
 st.write("---")
 
 # Main Content
