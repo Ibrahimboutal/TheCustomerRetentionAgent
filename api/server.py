@@ -329,16 +329,60 @@ def check_approval_status(request_id: int):
     return {"status": row[0]}
 
 def search_support_history(customer_id: int):
-    """Agentic RAG: Retrieve unstructured support logs for personalization."""
+    """Multimodal RAG: Retrieve unstructured support logs and analyze raw audio calls."""
     conn = get_db_connection()
     cursor = conn.cursor()
+    
+    # Get text logs (if any exist)
     cursor.execute("SELECT transcript, date FROM support_logs WHERE customer_id = ?", (customer_id,))
     rows = cursor.fetchall()
+    
+    text_logs = [{"date": r[1], "transcript": r[0]} for r in rows] if rows else []
+    
+    # Check for audio logs
+    try:
+        cursor.execute("SELECT audio_path FROM support_audio WHERE customer_id = ?", (customer_id,))
+        audio_row = cursor.fetchone()
+    except sqlite3.OperationalError:
+        # Table might not exist if generate script wasn't run
+        audio_row = None
+        
     conn.close()
     
-    if not rows:
-        return {"status": "empty", "message": "No previous support tickets found."}
-    return {"status": "success", "logs": [{"date": r[1], "transcript": r[0]} for r in rows]}
+    result = {
+        "status": "success",
+        "text_logs": text_logs,
+        "audio_analysis": None
+    }
+    
+    if not text_logs and not audio_row:
+        return {"status": "empty", "message": "No previous support tickets or audio calls found."}
+        
+    # Multimodal Gemini Audio RAG
+    if audio_row and GEMINI_API_KEY:
+        audio_path = audio_row[0]
+        if os.path.exists(audio_path):
+            try:
+                # 1. Upload to Gemini File API
+                uploaded_file = genai.upload_file(audio_path)
+                
+                # 2. Query Gemini 1.5 Pro
+                model = genai.GenerativeModel('gemini-1.5-pro')
+                prompt = "Listen to this customer support call. Analyze the customer's tone, frustration level, and detect any sarcasm. Provide a concise summary of their sentiment and the key issues so the next agent can apologize appropriately."
+                
+                response = model.generate_content([uploaded_file, prompt])
+                
+                result["audio_analysis"] = {
+                    "audio_file": os.path.basename(audio_path),
+                    "gemini_multimodal_insight": response.text.strip()
+                }
+                
+                # Clean up
+                genai.delete_file(uploaded_file.name)
+            except Exception as e:
+                result["audio_analysis"] = {"error": f"Audio processing failed: {e}"}
+                
+    return result
 
 def run_uplift_modeling(customer_id: int):
     """Causal Inference: Determine the exact causal impact of a discount using Causal AI."""

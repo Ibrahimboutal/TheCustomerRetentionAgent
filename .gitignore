@@ -24,3 +24,6 @@ ngrok.exe
 
 # Streamlit
 .streamlit/
+
+# Audio files
+/data/audio/*.mp3
