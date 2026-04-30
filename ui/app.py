@@ -1,5 +1,4 @@
 import streamlit as st
-import sqlite3
 import pandas as pd
 import plotly.express as px
 import time
@@ -8,13 +7,29 @@ from streamlit_autorefresh import st_autorefresh
 import sys
 import os
 import numpy as np
+import json
+from supabase import create_client
+from dotenv import load_dotenv
 
+load_dotenv()
+
+# =========================
+# CONFIG & SUPABASE
+# =========================
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
-from api.server import get_customers, draft_email_logic
-from agent.decision_engine import DecisionEngine
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+
+@st.cache_resource
+def get_supabase():
+    if SUPABASE_URL and SUPABASE_KEY:
+        return create_client(SUPABASE_URL, SUPABASE_KEY)
+    return None
+
+supabase = get_supabase()
 
 # Page config for premium feel
 st.set_page_config(
@@ -49,12 +64,6 @@ st.markdown("""
         margin-bottom: 0.5rem;
     }
     
-    .sub-header {
-        font-size: 1.2rem;
-        color: #9D4EDD;
-        margin-bottom: 2rem;
-    }
-    
     .metric-card {
         background: rgba(60, 9, 108, 0.4);
         border: 1px solid #7B2CBF;
@@ -70,23 +79,6 @@ st.markdown("""
         border-color: #9D4EDD;
     }
     
-    .stButton>button {
-        background: linear-gradient(45deg, #7B2CBF, #5A189A);
-        color: white;
-        border: none;
-        border-radius: 10px;
-        padding: 0.8rem 2rem;
-        font-weight: 600;
-        transition: all 0.3s;
-        width: 100%;
-    }
-    
-    .stButton>button:hover {
-        background: linear-gradient(45deg, #9D4EDD, #7B2CBF);
-        box-shadow: 0 0 20px rgba(157, 78, 221, 0.6);
-        transform: scale(1.02);
-    }
-    
     .log-container {
         background: #000000;
         border-left: 4px solid #7B2CBF;
@@ -94,294 +86,103 @@ st.markdown("""
         border-radius: 0 10px 10px 0;
         font-family: 'Courier New', Courier, monospace;
         margin-bottom: 10px;
-        line-height: 1.4;
-    }
-    
-    .customer-success-voice {
-        color: #4DFF88;
-        font-weight: bold;
-        border-bottom: 1px solid #4DFF88;
-    }
-    
-    .cfo-voice {
-        color: #FF4D4D;
-        font-weight: bold;
-        border-bottom: 1px solid #FF4D4D;
-    }
-
-    .orchestrator-voice {
-        color: #FFD700;
-        font-weight: bold;
-        border-bottom: 1px solid #FFD700;
     }
 </style>
 """, unsafe_allow_html=True)
 
-import os
-BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
-
 def load_data():
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    conn.execute('PRAGMA journal_mode=WAL;')
-    df = pd.read_sql_query("SELECT * FROM customers", conn)
-    conn.close()
-    return df
-
-def fetch_agent_logs():
-    conn = sqlite3.connect(DB_PATH, timeout=10.0)
-    conn.execute('PRAGMA journal_mode=WAL;')
-    logs = pd.read_sql_query("SELECT * FROM agent_logs ORDER BY timestamp DESC LIMIT 20", conn)
-    conn.close()
-    return logs
+    if supabase:
+        res = supabase.table("customers").select("*").execute()
+        df = pd.DataFrame(res.data)
+        if not df.empty:
+            expected = ["customer_id", "name", "email", "gender", "SeniorCitizen", "Partner", "Dependents", "tenure", "PhoneService", "MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies", "Contract", "PaperlessBilling", "PaymentMethod", "MonthlyCharges", "TotalCharges", "segment", "vip_flag", "discount_code"]
+            mapping = {col.lower(): col for col in expected}
+            df.columns = [mapping.get(c.lower(), c) for c in df.columns]
+        return df
+    return pd.DataFrame()
 
 # --- UI LAYOUT ---
-
 st.markdown("<h1 class='main-header'>Customer Retention Agent</h1>", unsafe_allow_html=True)
-st.markdown("<p class='sub-header'>Powered by Model Context Protocol (MCP) & Gemini Agent Builder</p>", unsafe_allow_html=True)
+st.markdown("<p style='color: #9D4EDD;'>Live Supabase Cloud Dashboard</p>", unsafe_allow_html=True)
+
+# Auto-refresh
+st_autorefresh(interval=5000, key="datarefresh")
 
 df = load_data()
 
-# Sidebar
-with st.sidebar:
-    st.image("https://img.icons8.com/fluency/96/robot-3.png", width=100)
-    st.title("Control Center")
-    
-    # Removed the dead button and replaced it with a live status monitor
-    st.markdown("""
-    <div style='background-color: rgba(77, 255, 136, 0.1); border: 1px solid #4DFF88; padding: 10px; border-radius: 5px; text-align: center;'>
-        <h4 style='color: #4DFF88; margin: 0;'>🟢 System Online</h4>
-        <small style='color: #E0AAFF;'>Awaiting Agent Commands via MCP</small>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    st.divider()
-    st.markdown("### ⚡ Time Machine Simulator")
-    shock_value = st.slider("Competitor Price Drop (%)", 0, 50, 0)
-    inject_shock = st.button("Inject Macro-Economic Shock ⚡")
-    
-    st.divider()
-    st.info("The Gemini Agent operates autonomously from the Google Cloud Console. Watch this dashboard update in real-time as the Agent executes its strategy.")
+if df.empty:
+    st.error("No data found in Supabase. Please check your connection.")
+    st.stop()
 
 # Top Metrics
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
     st.markdown(f"<div class='metric-card'><h3>Total Customers</h3><h2>{len(df)}</h2></div>", unsafe_allow_html=True)
 with col2:
-    at_risk_count = len(df[df['segment'] == 'At Risk'])
-    st.markdown(f"<div class='metric-card'><h3>At Risk</h3><h2 style='color: #FF4D4D;'>{at_risk_count}</h2></div>", unsafe_allow_html=True)
+    at_risk = len(df[df['segment'] == 'At Risk'])
+    st.markdown(f"<div class='metric-card'><h3>At Risk 🚨</h3><h2 style='color: #FF4D4D;'>{at_risk}</h2></div>", unsafe_allow_html=True)
 with col3:
-    champions_count = len(df[df['segment'] == 'Champions'])
-    st.markdown(f"<div class='metric-card'><h3>Champions</h3><h2 style='color: #4DFF88;'>{champions_count}</h2></div>", unsafe_allow_html=True)
+    champions = len(df[df['segment'] == 'Champion'])
+    st.markdown(f"<div class='metric-card'><h3>Champions 🏆</h3><h2 style='color: #4DFF88;'>{champions}</h2></div>", unsafe_allow_html=True)
 with col4:
-    revenue = f"${df['TotalCharges'].sum():,.0f}"
-    st.markdown(f"<div class='metric-card'><h3>Total Revenue</h3><h2>{revenue}</h2></div>", unsafe_allow_html=True)
+    spenders = len(df[df['segment'] == 'Big Spender'])
+    st.markdown(f"<div class='metric-card'><h3>Big Spenders 💰</h3><h2 style='color: #FFD700;'>{spenders}</h2></div>", unsafe_allow_html=True)
+with col5:
+    rev = f"${df['TotalCharges'].sum():,.0f}"
+    st.markdown(f"<div class='metric-card'><h3>Total Revenue</h3><h2>{rev}</h2></div>", unsafe_allow_html=True)
 
 st.write("---")
 
-if inject_shock and shock_value > 0:
-    st.session_state['shock_injected'] = True
-    st.session_state['shock_value'] = shock_value
-    
-    # Run the live simulation
-    with st.spinner("Agentic System re-calculating risk and re-running SciPy Optimization..."):
-        # Fetch live data with base probabilities
-        customers = get_customers()
-        sim_df = pd.DataFrame(customers)
-        
-        # Inject Shock
-        sim_df['base_probability'] = sim_df['churn_probability']
-        # For a 50% price drop, increase churn risk proportionally (e.g. up to +40% absolute)
-        shock_impact = (shock_value / 50.0) * 40.0
-        sim_df['churn_probability'] = np.clip(sim_df['churn_probability'] + shock_impact, 0, 100)
-        
-        # Re-run SciPy Optimization
-        allocated, total_spend = DecisionEngine.optimize_cohort_discounts(sim_df, budget=5000)
-        
-        st.session_state['sim_df'] = sim_df
-        st.session_state['allocations'] = allocated
-        st.session_state['total_spend'] = total_spend
-
-if st.session_state.get('shock_injected'):
-    st.markdown("## ⚡ Time Machine Simulation Results")
-    st.warning(f"**Macro-Economic Shock Injected:** Competitor dropped prices by {st.session_state['shock_value']}%. Global churn risk surged.")
-    
-    sim_df = st.session_state['sim_df']
-    allocated = st.session_state['allocations']
-    total_spend = st.session_state['total_spend']
-    
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Original Average Churn Risk", f"{sim_df['base_probability'].mean():.1f}%")
-    c2.metric("New Average Churn Risk", f"{sim_df['churn_probability'].mean():.1f}%", f"+{(sim_df['churn_probability'].mean() - sim_df['base_probability'].mean()):.1f}%", delta_color="inverse")
-    c3.metric("Budget Re-Allocated", f"${total_spend:,.0f}", "$5,000 Cap")
-    
-    st.markdown("### 🤖 Agentic Response: Live SciPy Allocation & Automated Campaigns")
-    
-    # Filter to newly at risk people who got a discount
-    at_risk_saved = []
-    for i, row in sim_df.iterrows():
-        if row['customer_id'] in allocated:
-            at_risk_saved.append({
-                "Customer": row['name'],
-                "New Churn Risk": f"{row['churn_probability']:.1f}%",
-                "Discount Allocated": f"{allocated[row['customer_id']]['rate']*100:.1f}%",
-                "LTV": f"${row['TotalCharges']:,.2f}",
-                "customer_id": row['customer_id'],
-                "segment": row['segment']
-            })
-            
-    alloc_df = pd.DataFrame(at_risk_saved)
-    if not alloc_df.empty:
-        st.dataframe(alloc_df.drop(columns=['customer_id', 'segment']), use_container_width=True)
-        
-        st.markdown("### 📧 Auto-Drafted Recovery Emails")
-        # Ensure 'LTV' is numeric for sorting by converting it back from string
-        alloc_df['numeric_ltv'] = alloc_df['LTV'].replace(r'[\$,]', '', regex=True).astype(float)
-        top_targets = alloc_df.sort_values(by="numeric_ltv", ascending=False).head(3)
-        for _, target in top_targets.iterrows():
-            email_body = draft_email_logic(target['customer_id'], target['segment'])
-            # draft_email_logic might return a dict {"error": ...}
-            if isinstance(email_body, dict):
-                email_body = email_body.get('message', 'Email drafting error.')
-            st.info(f"**To: {target['Customer']}**\n\n{email_body}\n\n*Agent Note: Offering {target['Discount Allocated']} discount to protect {target['LTV']} LTV from competitor shock.*")
-    else:
-        st.success("No discounts allocated. The optimizer determined no budget could yield positive ROI.")
-        
-st.write("---")
-
-# Main Content
-tab1, tab2, tab3, tab4 = st.tabs(["📊 Segmentation Analytics", "👥 Customer Database", "🧠 Agent Thought Process", "🔐 Approval Queue"])
+tab1, tab2, tab3 = st.tabs(["📊 Segmentation", "👥 Customer List", "📡 Agent Activity"])
 
 with tab1:
     c1, c2 = st.columns(2)
     with c1:
-        fig = px.pie(df, names='segment', title='Customer Segments Distribution', 
+        fig = px.pie(df, names='segment', title='Market Segmentation', 
                      color_discrete_sequence=px.colors.qualitative.Prism)
         fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#E0AAFF")
-        st.plotly_chart(fig, width='stretch')
-    
+        st.plotly_chart(fig, use_container_width=True)
     with c2:
-        fig2 = px.scatter(df, x='tenure', y='TotalCharges', color='segment',
-                         size='TotalCharges', hover_name='name', title='LTV vs Tenure by Segment')
+        fig2 = px.scatter(df, x='tenure', y='MonthlyCharges', color='segment',
+                         size='TotalCharges', hover_name='name', title='Spend vs Tenure Analysis')
         fig2.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#E0AAFF")
-        st.plotly_chart(fig2, width='stretch')
-
-    st.markdown("---")
-    st.subheader("📈 Business Impact Projection (Monte Carlo Simulation)")
-    col_a, col_b = st.columns([2, 1])
-    
-    with col_a:
-        roi_data = pd.DataFrame({
-            "Scenario": ["Control (10% Blast)", "Agent (ML + RAG)"],
-            "Net Revenue Retained": [43100, 134800],
-            "Customers Saved": [49, 152]
-        })
-        fig_roi = px.bar(roi_data, x="Scenario", y="Net Revenue Retained", 
-                         color="Scenario", text_auto='.2s',
-                         title="Projected Net Revenue Retained ($)")
-        fig_roi.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(0,0,0,0)', font_color="#E0AAFF")
-        st.plotly_chart(fig_roi, use_container_width=True)
-        
-    with col_b:
-        st.info("**Simulation Assumptions:**")
-        st.write("- **Intervention Lift:** +12% absolute improvement in save rate.")
-        st.write("- **Precision:** ML prevents 40% discount waste on 'Sure Things'.")
-        st.write("- **Personalization:** RAG-driven empathy reduces 'Sleeping Dog' risk.")
-        st.success("**Projected Lift: +212% Net Revenue**")
+        st.plotly_chart(fig2, use_container_width=True)
 
 with tab2:
-    st.dataframe(df.style.background_gradient(subset=['TotalCharges'], cmap='Purples'), width='stretch')
+    # Stylized Dataframe
+    st.dataframe(
+        df[['customer_id', 'name', 'segment', 'MonthlyCharges', 'TotalCharges', 'vip_flag', 'discount_code']]
+        .sort_values(by='TotalCharges', ascending=False)
+        .style.background_gradient(subset=['MonthlyCharges'], cmap='Purples')
+        .format({'TotalCharges': '${:,.2f}', 'MonthlyCharges': '${:,.2f}'}),
+        use_container_width=True
+    )
 
 with tab3:
-    st.markdown("### 📡 Live Agent Feed")
-    # Refreshes the page every 5 seconds automatically for the live feed
-    st_autorefresh(interval=5000, key="agent_feed_refresh")
-    
-    st.info("Showing real-world actions taken by the Google AI Agent via the MCP Server.")
-    
-    if st.button("🔄 Refresh Live Feed"):
+    st.markdown("### 📡 Live Agent Action Logs")
+    if supabase:
+        logs_res = supabase.table("agent_logs").select("*").order("timestamp", desc=True).limit(15).execute()
+        logs_df = pd.DataFrame(logs_res.data)
+        if not logs_df.empty:
+            for _, row in logs_df.iterrows():
+                st.markdown(f"""
+                <div class='log-container'>
+                    <span style='color: #9D4EDD;'>[{row['timestamp']}]</span> 
+                    <b>{row['tool_name']}</b><br>
+                    <div style='color: #E0AAFF;'>Result: {row['result']}</div>
+                </div>
+                """, unsafe_allow_html=True)
+        else:
+            st.info("No agent actions recorded in Supabase yet.")
+
+# Sidebar
+with st.sidebar:
+    st.image("https://img.icons8.com/fluency/96/robot-3.png", width=80)
+    st.title("MCP Controller")
+    st.success("🟢 Connected to Supabase")
+    st.divider()
+    st.write("The Gemini Agent is currently processing churn risks and updating segments in real-time.")
+    if st.button("Force DB Refresh"):
         st.rerun()
 
-    agent_logs = fetch_agent_logs()
-    if agent_logs.empty:
-        st.write("No agent activity recorded yet. Waiting for Google AI Agent to call tools...")
-    else:
-        for idx, row in agent_logs.iterrows():
-            content = row['result']
-            
-            # Handle Boardroom Debate Transcript
-            if "transcript" in content and "initiate_boardroom_debate" in row['tool_name']:
-                try:
-                    # Parse the result string if it's a string representation of a dict
-                    if isinstance(content, str):
-                        import ast
-                        result_dict = ast.literal_eval(content)
-                    else:
-                        result_dict = content
-                    
-                    transcript = result_dict.get('transcript', [])
-                    debate_html = "<div style='margin-top: 10px; border-left: 2px solid #7B2CBF; padding-left: 15px;'>"
-                    for entry in transcript:
-                        agent = entry['agent']
-                        text = entry['text']
-                        voice_class = "orchestrator-voice"
-                        if "Success" in agent: voice_class = "customer-success-voice"
-                        elif "CFO" in agent: voice_class = "cfo-voice"
-                        
-                        debate_html += f"<p><span class='{voice_class}'>{agent}:</span> {text}</p>"
-                    debate_html += "</div>"
-                    content = debate_html
-                except Exception as e:
-                    content = f"Error rendering debate: {e}<br>{content}"
-            else:
-                # Fallback for other tools or legacy logs
-                content = content.replace("Marketing:", "<span class='customer-success-voice'>Marketing:</span>")
-                content = content.replace("Finance:", "<span class='cfo-voice'>Finance:</span>")
-            
-            st.markdown(f"""
-            <div class='log-container'>
-                <span style='color: #9D4EDD;'>[{row['timestamp']}]</span> 
-                <b>{row['tool_name']}</b><br>
-                <small>Args: {row['arguments']}</small><br>
-                <div style='color: #E0AAFF;'>Result: {content}</div>
-            </div>
-            """, unsafe_allow_html=True)
-
-with tab4:
-    st.markdown("### 🔐 Pending Budget Approvals")
-    st.info("The AI Agent has paused and is requesting budget for high-value discounts.")
-    
-    conn = sqlite3.connect(DB_PATH)
-    approvals_df = pd.read_sql_query("""
-        SELECT a.id, c.name, a.requested_amount, a.status, a.timestamp 
-        FROM approvals a 
-        JOIN customers c ON a.customer_id = c.customer_id
-        WHERE a.status = 'pending'
-        ORDER BY a.timestamp DESC
-    """, conn)
-    
-    if approvals_df.empty:
-        st.success("No pending approvals. The agent is free to execute standard strategies.")
-    else:
-        for idx, row in approvals_df.iterrows():
-            col_a, col_b, col_c = st.columns([2, 1, 1])
-            with col_a:
-                st.markdown(f"**{row['name']}** requested **${row['requested_amount']}**")
-                st.caption(f"Request ID: {row['id']} | Time: {row['timestamp']}")
-            with col_b:
-                if st.button(f"✅ Approve #{row['id']}", key=f"app_{row['id']}"):
-                    conn.execute("UPDATE approvals SET status = 'approved' WHERE id = ?", (row['id'],))
-                    conn.commit()
-                    st.toast(f"Budget approved for {row['name']}!")
-                    st.rerun()
-            with col_c:
-                if st.button(f"❌ Reject #{row['id']}", key=f"rej_{row['id']}"):
-                    conn.execute("UPDATE approvals SET status = 'rejected' WHERE id = ?", (row['id'],))
-                    conn.commit()
-                    st.toast(f"Budget rejected for {row['name']}.")
-                    st.rerun()
-            st.divider()
-    conn.close()
-
-# Footer
-st.markdown("<br><p style='text-align: center; color: #5A189A;'>Hackathon Prototype - Customer Retention Agent v1.0</p>", unsafe_allow_html=True)
+st.markdown("<br><p style='text-align: center; color: #5A189A;'>Hackathon Prototype - Customer Retention Agent v1.1</p>", unsafe_allow_html=True)

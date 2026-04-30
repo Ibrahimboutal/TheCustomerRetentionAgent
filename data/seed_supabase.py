@@ -1,61 +1,71 @@
 import sqlite3
-import os
 import pandas as pd
-from supabase import create_client, Client
+import os
+from supabase import create_client
 from dotenv import load_dotenv
+import sys
 
-# Load environment variables
 load_dotenv()
 
-SUPABASE_URL = os.getenv("SUPABASE_URL")
-SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+# =========================
+# CONFIG
+# =========================
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
+SUPABASE_URL = os.environ.get("SUPABASE_URL")
+SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 
-def seed_to_supabase():
+def migrate():
     if not SUPABASE_URL or not SUPABASE_KEY:
-        print("❌ Error: SUPABASE_URL or SUPABASE_KEY not found in .env file.")
+        print("🚨 Error: SUPABASE_URL and SUPABASE_KEY must be set in .env")
         return
 
-    supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
-    
-    # 1. Connect to local SQLite
-    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-    db_path = os.path.join(BASE_DIR, 'mock_crm.db')
-    
-    if not os.path.exists(db_path):
-        print(f"❌ Error: Local database not found at {db_path}. Run crm_init.py first.")
+    supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+
+    # 1. Load Local Data
+    if not os.path.exists(DB_PATH):
+        print(f"🚨 Error: Local database not found at {DB_PATH}")
         return
-        
-    conn = sqlite3.connect(db_path)
+
+    conn = sqlite3.connect(DB_PATH)
     df = pd.read_sql_query("SELECT * FROM customers", conn)
     conn.close()
 
-    # PostgreSQL is case-sensitive for identifiers. 
-    # Lowercase everything to match standard Supabase table creation.
-    df.columns = [c.lower() for c in df.columns]
+    print(f"🔄 Found {len(df)} customers locally. Cleaning Supabase for fresh seed...")
 
-    print(f"🔄 Found {len(df)} customers in local database. Migrating to Supabase...")
-
-    # 2. Push to Supabase (in batches of 50 to avoid payload limits)
-    # Convert dataframe to list of dicts
-    records = df.to_dict(orient='records')
-    
-    # Supabase uses snake_case for consistency usually, but we'll stick to the provided schema
-    # which has some PascalCase from Telco dataset
-    
+    # 2. CLEAN SUPABASE
     try:
-        # Clear existing customers to avoid primary key conflicts
-        supabase.table("customers").delete().neq("customer_id", -1).execute()
-        
-        # Batch upload
-        for i in range(0, len(records), 50):
-            batch = records[i:i+50]
-            supabase.table("customers").insert(batch).execute()
-            print(f"✅ Uploaded batch {i//50 + 1}")
-
-        print("\n🚀 Migration Complete! Your Supabase instance is now seeded.")
-        
+        supabase.table("promotion_history").delete().neq("id", 0).execute()
+        supabase.table("agent_logs").delete().neq("id", 0).execute()
+        supabase.table("approvals").delete().neq("id", 0).execute()
+        supabase.table("support_logs").delete().neq("id", 0).execute()
+        supabase.table("customers").delete().neq("customer_id", 0).execute()
+        print("✅ Supabase cleared.")
     except Exception as e:
-        print(f"❌ Migration Failed: {e}")
+        print(f"⚠️ Clean Warning: {e}")
+
+    # 3. NORMALIZE FOR SUPABASE
+    # Lowercase all column names (Supabase/Postgres standard)
+    df.columns = [c.lower() for c in df.columns]
+    
+    # Ensure IDs are clean
+    df['customer_id'] = range(1, len(df) + 1)
+    df['vip_flag'] = 0
+    df['discount_code'] = None
+    df['segment'] = 'Unassigned'
+
+    # Convert to records
+    records = df.to_dict(orient="records")
+    
+    print(f"🚀 Seeding {len(records)} customers to Supabase (Lowercase Mapping)...")
+    try:
+        res = supabase.table("customers").insert(records).execute()
+        if res.data:
+            print(f"🎉 Success! Migrated {len(res.data)} records to Supabase.")
+        else:
+            print(f"🚨 Migration Failed: {res}")
+    except Exception as e:
+        print(f"🚨 Supabase Insert Error: {e}")
 
 if __name__ == "__main__":
-    seed_to_supabase()
+    migrate()
