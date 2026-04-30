@@ -19,6 +19,7 @@ def init_db():
     CREATE TABLE customers (
         customer_id INTEGER PRIMARY KEY,
         name TEXT,
+        email TEXT,
         gender TEXT,
         SeniorCitizen INTEGER,
         Partner TEXT,
@@ -46,6 +47,7 @@ def init_db():
     # Categories from the dataset
     options = {
         'gender': ['Female', 'Male'],
+        'email': [f"[EMAIL_ADDRESS]" for i in range(50)],
         'Partner': ['Yes', 'No'],
         'Dependents': ['Yes', 'No'],
         'PhoneService': ['Yes', 'No'],
@@ -71,8 +73,8 @@ def init_db():
         monthly = round(random.uniform(20, 120), 2)
         total = round(tenure * monthly, 2)
         
-        cust_row = [i, name]
-        for key in ['gender', 'SeniorCitizen', 'Partner', 'Dependents']:
+        cust_row = [i,random.choice(options['email']), name]
+        for key in ['gender','SeniorCitizen', 'Partner', 'Dependents']:
             if key == 'SeniorCitizen':
                 cust_row.append(random.choice([0, 1]))
             else:
@@ -89,7 +91,7 @@ def init_db():
         customers.append(tuple(cust_row))
 
     cursor.executemany('''
-    INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ''', customers)
 
     conn.commit()
