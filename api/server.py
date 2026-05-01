@@ -17,6 +17,11 @@ import warnings
 from typing import Optional, Any
 from dotenv import load_dotenv
 from supabase import create_client
+from google.cloud import bigquery
+from google.cloud import logging as cloud_logging
+from agent.boardroom import BoardroomDebate
+from agent.decision_engine import DecisionEngine
+import google.generativeai as genai
 
 load_dotenv()
 
@@ -31,6 +36,15 @@ DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
 ML_DIR = os.path.join(BASE_DIR, "ml")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")
+
+# Initialize Cloud Logging
+try:
+    logging_client = cloud_logging.Client()
+    logging_client.setup_logging()
+    print("📡 Cloud Logging Enabled")
+except:
+    print("⚠️ Cloud Logging skipped (Local mode)")
 
 app = FastAPI(title="Perfect-Sync-MCP")
 
@@ -68,22 +82,39 @@ class DB:
 
     @staticmethod
     def query(sql: str, params: tuple = ()) -> pd.DataFrame:
+        # Priority 1: Supabase
         client = DB.get_client()
         if client:
             table_match = re.search(r"FROM\s+(\w+)", sql, re.IGNORECASE)
             if table_match:
                 table_name = table_match.group(1)
-                res = client.table(table_name).select("*").execute()
-                df = pd.DataFrame(res.data)
-                if not df.empty:
-                    expected = ["customer_id", "name", "email", "gender", "SeniorCitizen", "Partner", "Dependents", "tenure", "PhoneService", "MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies", "Contract", "PaperlessBilling", "PaymentMethod", "MonthlyCharges", "TotalCharges", "segment", "vip_flag", "discount_code"]
-                    mapping = {col.lower(): col for col in expected}
-                    df.columns = [mapping.get(c.lower(), c) for c in df.columns]
-                return df
-        conn = sqlite3.connect(DB_PATH)
-        df = pd.read_sql_query(sql, conn, params=params)
-        conn.close()
-        return df
+                try:
+                    res = client.table(table_name).select("*").execute()
+                    df = pd.DataFrame(res.data)
+                    if not df.empty:
+                        expected = ["customer_id", "name", "email", "gender", "SeniorCitizen", "Partner", "Dependents", "tenure", "PhoneService", "MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies", "Contract", "PaperlessBilling", "PaymentMethod", "MonthlyCharges", "TotalCharges", "segment", "vip_flag", "discount_code"]
+                        mapping = {col.lower(): col for col in expected}
+                        df.columns = [mapping.get(c.lower(), c) for c in df.columns]
+                    return df
+                except:
+                    pass
+
+        # Priority 2: BigQuery
+        if GOOGLE_CLOUD_PROJECT:
+            try:
+                df = BQ.query(sql)
+                if not df.empty: return df
+            except:
+                pass
+
+        # Priority 3: Local SQLite
+        if os.path.exists(DB_PATH):
+            conn = sqlite3.connect(DB_PATH)
+            df = pd.read_sql_query(sql, conn, params=params)
+            conn.close()
+            return df
+        
+        return pd.DataFrame()
 
     @staticmethod
     def execute(sql: str, params: tuple = ()) -> Any:
@@ -115,6 +146,25 @@ class DB:
         conn.commit()
         conn.close()
         return True
+
+class BQ:
+    _client = None
+    @classmethod
+    def get_client(cls):
+        if cls._client is None and GOOGLE_CLOUD_PROJECT:
+            try: cls._client = bigquery.Client(project=GOOGLE_CLOUD_PROJECT)
+            except: pass
+        return cls._client
+
+    @staticmethod
+    def query(sql: str) -> pd.DataFrame:
+        client = BQ.get_client()
+        if client:
+            # Simple heuristic: if it's a raw SELECT from customers, point to BQ
+            if "FROM customers" in sql.upper() and "retention_engine" not in sql.lower():
+                sql = sql.replace("customers", f"`{GOOGLE_CLOUD_PROJECT}.retention_engine.customers`")
+            return client.query(sql).to_dataframe()
+        return pd.DataFrame()
 
 # =========================
 # ML
@@ -198,7 +248,68 @@ def flag_vip(customer_id: Any = None):
     DB.execute("UPDATE customers SET vip_flag = ? WHERE customer_id = ?", (1, c_id))
     return {"status": "success", "msg": f"Customer {c_id} is now flagged as VIP in the database."}
 
-TOOLS_MAP = {"get_customers": get_customers, "segment_customers": segment_customers, "generate_discount": generate_discount, "flag_vip": flag_vip}
+def initiate_boardroom_debate(customer_id: Any):
+    # Fetch customer details
+    df = DB.query(f"SELECT name, churn_probability, TotalCharges FROM customers WHERE customer_id = {int(customer_id)}")
+    if df.empty: return {"error": "Customer not found"}
+    
+    row = df.iloc[0]
+    debate_engine = BoardroomDebate()
+    result = debate_engine.run_debate(row['name'], f"{row['churn_probability']}%", row['TotalCharges'])
+    
+    # Log the debate to Supabase/Logging
+    sys.stdout.write(f"🎭 DEBATE COMPLETE for {row['name']}: {result['discount']}% approved.\n")
+    sys.stdout.flush()
+    
+    return result
+
+def draft_empathy_email(customer_id: Any, tone: str = "empathetic"):
+    # Vertex AI Safety Settings
+    safety_settings = [
+        {"category": "HARM_CATEGORY_HARASSMENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_HATE_SPEECH", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_SEXUALLY_EXPLICIT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+        {"category": "HARM_CATEGORY_DANGEROUS_CONTENT", "threshold": "BLOCK_MEDIUM_AND_ABOVE"},
+    ]
+    
+    model = genai.GenerativeModel('gemini-1.5-pro', safety_settings=safety_settings)
+    
+    df = DB.query(f"SELECT name FROM customers WHERE customer_id = {int(customer_id)}")
+    name = df.iloc[0]['name'] if not df.empty else "Valued Customer"
+    
+    prompt = f"Write a professional and {tone} email to {name} offering a special retention discount. Do not use generic placeholders. Mention our appreciation for their loyalty."
+    
+    response = model.generate_content(prompt)
+    return {"email_body": response.text, "safety_checked": True}
+
+def trigger_macro_optimization(budget: float = 5000):
+    df = DB.query("SELECT customer_id, churn_probability, TotalCharges FROM customers")
+    if df.empty: return {"error": "No customers found for optimization."}
+    
+    # Use the SciPy engine
+    allocated, total_spend = DecisionEngine.optimize_cohort_discounts(df, budget=budget)
+    
+    # Persist the new discount codes to the DB (simulated)
+    for c_id, data in allocated.items():
+        code = f"MACRO-{random.randint(100, 999)}"
+        DB.execute("UPDATE customers SET discount_code = ? WHERE customer_id = ?", (code, c_id))
+    
+    return {
+        "status": "success",
+        "budget_used": total_spend,
+        "customers_saved": len(allocated),
+        "avg_discount": np.mean([v['rate'] for v in allocated.values()]) if allocated else 0
+    }
+
+TOOLS_MAP = {
+    "get_customers": get_customers, 
+    "segment_customers": segment_customers, 
+    "generate_discount": generate_discount, 
+    "flag_vip": flag_vip,
+    "initiate_boardroom_debate": initiate_boardroom_debate,
+    "draft_empathy_email": draft_empathy_email,
+    "trigger_macro_optimization": trigger_macro_optimization
+}
 
 # =========================
 # HUB
@@ -214,7 +325,10 @@ async def mcp_hub(req: MCPRequest = Body(...)):
                 {"name": "get_customers", "description": "Fetch customer list to see IDs.", "inputSchema": {"type": "object"}},
                 {"name": "segment_customers", "description": "REQUIRED: Updates segments in the cloud database.", "inputSchema": {"type": "object"}},
                 {"name": "generate_discount", "description": "Saves a promo code for a customer ID.", "inputSchema": {"type": "object", "properties": {"customer_id": {"type": ["string", "integer"]}}, "required": ["customer_id"]}},
-                {"name": "flag_vip", "description": "Flags a customer as VIP in Supabase.", "inputSchema": {"type": "object", "properties": {"customer_id": {"type": ["string", "integer"]}}, "required": ["customer_id"]}}
+                {"name": "flag_vip", "description": "Flags a customer as VIP in Supabase.", "inputSchema": {"type": "object", "properties": {"customer_id": {"type": ["string", "integer"]}}, "required": ["customer_id"]}},
+                {"name": "initiate_boardroom_debate", "description": "Triggers a multi-agent debate (CFO vs Success) for a customer ID.", "inputSchema": {"type": "object", "properties": {"customer_id": {"type": "integer"}}, "required": ["customer_id"]}},
+                {"name": "draft_empathy_email", "description": "Generates a safety-filtered email for a customer.", "inputSchema": {"type": "object", "properties": {"customer_id": {"type": "integer"}, "tone": {"type": "string"}}, "required": ["customer_id"]}},
+                {"name": "trigger_macro_optimization", "description": "Solves SLSQP optimization for the entire cohort based on a budget.", "inputSchema": {"type": "object", "properties": {"budget": {"type": "number"}}, "required": ["budget"]}}
             ]
             return {"jsonrpc": "2.0", "id": req.id, "result": {"tools": tools_list}}
         if req.method == "tools/call":

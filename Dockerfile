@@ -4,9 +4,10 @@ FROM python:3.12-slim
 # Set working directory
 WORKDIR /app
 
-# Install system dependencies (needed for SciPy, Numpy, etc.)
+# Install system dependencies
 RUN apt-get update && apt-get install -y \
     build-essential \
+    curl \
     && rm -rf /var/lib/apt/lists/*
 
 # Copy requirements first to leverage Docker cache
@@ -18,11 +19,15 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy the entire project
 COPY . .
 
-# Expose ports for both the FastAPI server and Streamlit
-EXPOSE 8000
-EXPOSE 8501
+# Make entrypoint executable
+RUN chmod +x entrypoint.sh
 
-# Provide a script to run both services, but realistically for Cloud Run 
-# you should deploy two separate services or use a process manager.
-# For simplicity, we'll start the FastAPI server by default.
-CMD ["uvicorn", "api.server:app", "--host", "0.0.0.0", "--port", "8000"]
+# Default Cloud Run port
+ENV PORT 8080
+ENV SERVICE_TYPE api
+
+# Expose port
+EXPOSE 8080
+
+# Use the entrypoint script
+ENTRYPOINT ["./entrypoint.sh"]

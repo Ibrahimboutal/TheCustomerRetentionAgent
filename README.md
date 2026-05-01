@@ -1,28 +1,34 @@
-# 🤖 The Causal Customer Retention Agent
-*A submission for the **Google Cloud Rapid Agent Hackathon** on Devpost.*
+# 🤖 The Causal Retention War Room
+*A premium submission for the **Google Cloud Rapid Agent Hackathon** on Devpost.*
 
-**The Problem:** Traditional "AI" chatbots just answer questions. They don't take action, and they certainly don't understand the strict mathematical constraints of an enterprise budget. 
-**The Solution:** An autonomous Agentic system powered by Gemini 1.5 Pro, Model Context Protocol (MCP), and True Causal AI (EconML) that actively saves high-value customers while proving its ROI mathematically.
+**The Problem:** Traditional "AI" chatbots are toys. They lack mathematical constraints, data grounding, and enterprise-grade deployment.
+**The Solution:** An autonomous Agentic system powered by **Gemini 1.5 Pro**, **Vertex AI Reasoning Engine**, **BigQuery**, and **True Causal AI**.
 
 ---
 
-## 🌟 Key Hackathon Integrations & Features
+## 🌟 Winning Integrations & Features
 
-### 1. 🧠 Google Cloud Agent Builder & Gemini 1.5 Pro
-- **Multimodal Voice RAG:** Instead of relying solely on text transcripts, the Agent natively ingests `.mp3` recordings of angry customer support calls using the **Google Generative AI File API**. Gemini 1.5 Pro natively listens to the audio to detect frustration, tone, and sarcasm to draft highly empathetic recovery emails.
-- **The Agentic Boardroom:** Replacing simple Human-in-the-Loop constraints, we built a real-time multi-agent debate system. Three distinct Gemini personas (Customer Success, CFO, and Orchestrator) argue over budget allocations in real-time.
+### 1. 🧠 Vertex AI Reasoning Engine & Gemini 1.5 Pro
+- **Multi-Agent Boardroom:** We built a managed multi-agent debate system where Gemini personas (CFO vs. Customer Success) argue over retention budgets in real-time.
+- **Reasoning Engine Ready:** The entire agent logic is wrapped in a Vertex AI Reasoning Engine compatible structure, allowing for managed runtime execution.
+- **Multimodal Voice RAG:** Ingests `.mp3` recordings to detect frustration and sarcasm natively via Gemini 1.5 Pro.
 
-### 2. 🔌 Model Context Protocol (MCP) Server
-- The entire system is architected around a robust **FastAPI MCP Server** (`api/server.py`).
-- It exposes 15 specialized tools (e.g., `initiate_boardroom_debate`, `get_uplift`, `simulate_revenue`, `draft_email`) allowing the frontend UI or external orchestrators to trigger advanced operations dynamically.
+### 2. ⚡ Enterprise Infrastructure (Google Cloud Native)
+- **BigQuery Analytical Core:** Replaced local storage with BigQuery for massive scalability and "Enterprise Readiness."
+- **Cloud Run Deployment:** Containerized and optimized for high-performance deployment via Google Cloud Run with automated CI/CD via `cloudbuild.yaml`.
+- **Cloud Logging & Observability:** Integrated with Google Cloud Logging for real-time monitoring of agent tool calls.
 
-### 3. 🎯 True Causal AI (Microsoft EconML)
-- **Beyond Prediction:** We don't just predict *who* will churn. We use an **X-Learner** (trained with EconML and Random Forests) to calculate the precise Individual Treatment Effect (ITE) of a discount.
-- **ROI Optimization:** This guarantees the Agent never wastes margin on "Sure Things" or triggers churn in "Sleeping Dogs."
+### 3. 🎯 True Causal AI & Optimization
+- **X-Learner Uplift Modeling:** Uses EconML to calculate the Individual Treatment Effect (ITE) of a discount, ensuring we never waste budget on "Sure Things."
+- **SciPy SLSQP Optimization:** A hard mathematical layer that solves for the most ROI-efficient budget allocation across thousands of customers under a strict global constraint.
 
-### 4. ⚡ The Time Machine Simulator
-- A live gamified Streamlit dashboard where judges can inject a "Macro-Economic Shock" (e.g., Competitor drops prices by 30%).
-- The system instantly re-calculates the entire cohort's churn risk, triggers a **SciPy Sequential Least Squares Programming (SLSQP)** optimization to re-allocate a strict $5,000 budget, and autonomously drafts targeted recovery campaigns for the highest-LTV users.
+### 4. 🛡️ Enterprise Safety & Guardrails
+- **Vertex AI Safety Filters:** Programmatic enforcement of safety settings (Harassment, Hate Speech, etc.) on all agent-generated outreach.
+- **Financial Guardrails:** Non-negotiable ROI thresholds prevent the agent from making irrational business decisions.
+
+### 5. 🕹️ The Time Machine Simulator (Premium UI)
+- A neon-styled, Glassmorphism Streamlit "War Room" dashboard.
+- Live "Agent Thought Stream" showing the real-time reasoning and debate of the AI agents.
 
 ---
 

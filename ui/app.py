@@ -39,53 +39,98 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for high-end aesthetics
+# Custom CSS for high-end aesthetics (War Room / Neon Glassmorphism)
 st.markdown("""
 <style>
+    @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&family=Inter:wght@300;400;700&display=swap');
+
     :root {
-        --primary-color: #7B2CBF;
-        --secondary-color: #3C096C;
-        --background-color: #10002B;
-        --text-color: #E0AAFF;
+        --primary: #00F5FF;
+        --secondary: #7000FF;
+        --bg: #050505;
+        --card-bg: rgba(20, 20, 20, 0.7);
     }
     
     .stApp {
-        background-color: #10002B;
-        color: #E0AAFF;
+        background: radial-gradient(circle at top right, #1a1a2e, #050505);
+        color: #FFFFFF;
+        font-family: 'Inter', sans-serif;
     }
     
     .main-header {
-        font-family: 'Outfit', sans-serif;
-        background: linear-gradient(90deg, #7B2CBF, #9D4EDD);
+        font-family: 'Orbitron', sans-serif;
+        background: linear-gradient(90deg, var(--primary), var(--secondary));
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
-        font-size: 3rem;
+        font-size: 3.5rem;
         font-weight: 800;
-        margin-bottom: 0.5rem;
+        text-transform: uppercase;
+        letter-spacing: 2px;
+        margin-bottom: 0rem;
     }
-    
+
+    /* Glassmorphism Cards */
     .metric-card {
-        background: rgba(60, 9, 108, 0.4);
-        border: 1px solid #7B2CBF;
-        border-radius: 15px;
-        padding: 20px;
-        text-align: center;
-        backdrop-filter: blur(10px);
-        transition: transform 0.3s ease;
+        background: var(--card-bg);
+        border: 1px solid rgba(0, 245, 255, 0.2);
+        border-radius: 20px;
+        padding: 25px;
+        text-align: left;
+        backdrop-filter: blur(15px);
+        box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.8);
+        transition: all 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
     }
     
     .metric-card:hover {
-        transform: translateY(-5px);
-        border-color: #9D4EDD;
+        transform: scale(1.02);
+        border-color: var(--primary);
+        box-shadow: 0 0 20px rgba(0, 245, 255, 0.3);
+    }
+
+    .metric-value {
+        font-family: 'Orbitron', sans-serif;
+        font-size: 2.2rem;
+        font-weight: 700;
+        margin: 10px 0;
+    }
+
+    /* Thought Stream Styles */
+    .thought-stream {
+        background: rgba(0, 0, 0, 0.9);
+        border-left: 2px solid var(--primary);
+        padding: 15px;
+        border-radius: 0 15px 15px 0;
+        font-family: 'Courier New', monospace;
+        font-size: 0.9rem;
+        color: #00FF41;
+        margin-bottom: 15px;
+        box-shadow: inset 0 0 10px rgba(0, 255, 65, 0.1);
     }
     
-    .log-container {
-        background: #000000;
-        border-left: 4px solid #7B2CBF;
-        padding: 15px;
-        border-radius: 0 10px 10px 0;
-        font-family: 'Courier New', Courier, monospace;
-        margin-bottom: 10px;
+    .agent-tag {
+        color: var(--primary);
+        font-weight: bold;
+        text-transform: uppercase;
+    }
+
+    /* Tabs Styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 20px;
+        background-color: transparent;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        height: 50px;
+        white-space: pre-wrap;
+        background-color: var(--card-bg);
+        border-radius: 10px 10px 0px 0px;
+        color: white;
+        padding: 0 20px;
+    }
+    
+    .stTabs [aria-selected="true"] {
+        background-color: rgba(0, 245, 255, 0.1) !important;
+        border-bottom: 2px solid var(--primary) !important;
     }
 </style>
 """, unsafe_allow_html=True)
@@ -159,21 +204,57 @@ with tab2:
     )
 
 with tab3:
-    st.markdown("### 📡 Live Agent Action Logs")
-    if supabase:
-        logs_res = supabase.table("agent_logs").select("*").order("timestamp", desc=True).limit(15).execute()
-        logs_df = pd.DataFrame(logs_res.data)
-        if not logs_df.empty:
-            for _, row in logs_df.iterrows():
+    st.markdown("### 📡 Agent Intelligence & Thought Stream")
+    
+    selected_customer = st.selectbox("Select Customer for Autonomous Review", df['customer_id'].tolist(), format_func=lambda x: f"ID {x} - {df[df['customer_id']==x]['name'].values[0]}")
+    
+    if st.button("🚀 Execute Autonomous Boardroom Debate"):
+        with st.status("Initializing Gemini Boardroom Agents...", expanded=True) as status:
+            st.write("🔍 Analyzing customer churn risk...")
+            time.sleep(1)
+            st.write("⚖️ Engaging Multi-Agent Debate (Success vs CFO)...")
+            
+            # Call the new debate tool
+            try:
+                # Simulate the tool call for the UI demo if server is local
+                import requests
+                res = requests.post("http://127.0.0.1:8000/", json={
+                    "jsonrpc": "2.0", "method": "tools/call", "params": {"name": "initiate_boardroom_debate", "arguments": {"customer_id": int(selected_customer)}}
+                }).json()
+                
+                debate_data = json.loads(res['result']['content'][0]['text'])
+                
                 st.markdown(f"""
-                <div class='log-container'>
-                    <span style='color: #9D4EDD;'>[{row['timestamp']}]</span> 
-                    <b>{row['tool_name']}</b><br>
-                    <div style='color: #E0AAFF;'>Result: {row['result']}</div>
+                <div class='thought-stream'>
+                    <span class='agent-tag'>[ORCHESTRATOR]</span> Analyzing viewpoints...<br><br>
+                    {debate_data.get('debate_transcript', 'Debate in progress...')}
                 </div>
                 """, unsafe_allow_html=True)
-        else:
-            st.info("No agent actions recorded in Supabase yet.")
+                
+                st.success(f"Decision Reached: {debate_data['discount']}% Discount Approved")
+                st.info(f"Summary: {debate_data['summary']}")
+                status.update(label="✅ Decision Finalized", state="complete", expanded=False)
+                
+            except Exception as e:
+                st.error(f"Agent connection error: {e}")
+                status.update(label="❌ Debate Deadlock", state="error")
+
+    st.write("---")
+    st.markdown("#### 📜 Historical Action Logs")
+    if supabase:
+        try:
+            logs_res = supabase.table("agent_logs").select("*").order("timestamp", desc=True).limit(10).execute()
+            logs_df = pd.DataFrame(logs_res.data)
+            if not logs_df.empty:
+                for _, row in logs_df.iterrows():
+                    st.markdown(f"""
+                    <div class='thought-stream' style='color: #E0AAFF; border-left-color: var(--secondary);'>
+                        <span style='color: var(--primary);'>[{row['timestamp']}]</span> 
+                        <b>{row['tool_name']}</b>: {row['result']}
+                    </div>
+                    """, unsafe_allow_html=True)
+        except:
+            st.info("No historical logs available.")
 
 # Sidebar
 with st.sidebar:
