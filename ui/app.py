@@ -822,8 +822,9 @@ with tab3:
             mode='lines+markers', line=dict(color='#FF4D4D', width=3),
             marker=dict(size=8, symbol='diamond')
         ))
+        DARK_DUAL = {k: v for k, v in DARK.items() if k not in ('yaxis',)}
         fig_surv.update_layout(
-            **DARK, title='LTV & At-Risk Rate by Tenure',
+            **DARK_DUAL, title='LTV & At-Risk Rate by Tenure',
             title_font_color='#00F5FF', title_font_family='Orbitron', height=320,
             yaxis=dict(title='Avg LTV ($)', gridcolor='rgba(255,255,255,.05)'),
             yaxis2=dict(title='% At Risk', overlaying='y', side='right',
