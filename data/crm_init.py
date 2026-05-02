@@ -11,10 +11,9 @@ def init_db():
     cursor = conn.cursor()
 
     cursor.execute("DROP TABLE IF EXISTS customers")
-    cursor.execute("DROP TABLE IF EXISTS agent_logs") # Clean up old logs too
+    cursor.execute("DROP TABLE IF EXISTS agent_logs")
     cursor.execute("CREATE TABLE agent_logs (timestamp TEXT, tool_name TEXT, arguments TEXT, result TEXT)")
 
-    # Complete Telco Schema
     cursor.execute('''
     CREATE TABLE customers (
         customer_id INTEGER PRIMARY KEY,
@@ -41,13 +40,12 @@ def init_db():
         TotalCharges REAL,
         segment TEXT,
         vip_flag INTEGER DEFAULT 0,
-        discount_code TEXT
+        discount_code TEXT,
+        churn_probability REAL DEFAULT 0.0
     )''')
 
-    # Categories from the dataset
     options = {
         'gender': ['Female', 'Male'],
-        'email': [f"[EMAIL_ADDRESS]" for i in range(50)],
         'Partner': ['Yes', 'No'],
         'Dependents': ['Yes', 'No'],
         'PhoneService': ['Yes', 'No'],
@@ -63,40 +61,49 @@ def init_db():
         'PaperlessBilling': ['Yes', 'No'],
         'PaymentMethod': ['Electronic check', 'Mailed check', 'Bank transfer (automatic)', 'Credit card (automatic)']
     }
-    
+
+    first_names = ["James", "Mary", "John", "Patricia", "Robert", "Jennifer",
+                   "Michael", "Linda", "William", "Barbara", "David", "Jessica"]
+    last_names = ["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia",
+                  "Miller", "Davis", "Wilson", "Anderson", "Taylor", "Thomas"]
+
     customers = []
     for i in range(1, 51):
-        name = random.choice(["James", "Mary", "John", "Patricia", "Robert", "Jennifer"]) + " " + \
-               random.choice(["Smith", "Johnson", "Williams", "Brown", "Jones", "Garcia"])
-        
+        name = random.choice(first_names) + " " + random.choice(last_names)
+        email = f"{name.lower().replace(' ', '.')}@email.com"
+        gender = random.choice(options['gender'])
+        senior = random.choice([0, 1])
+        partner = random.choice(options['Partner'])
+        dependents = random.choice(options['Dependents'])
         tenure = random.randint(1, 72)
+        phone = random.choice(options['PhoneService'])
+        multi = random.choice(options['MultipleLines'])
+        internet = random.choice(options['InternetService'])
+        sec = random.choice(options['OnlineSecurity'])
+        backup = random.choice(options['OnlineBackup'])
+        device = random.choice(options['DeviceProtection'])
+        tech = random.choice(options['TechSupport'])
+        tv = random.choice(options['StreamingTV'])
+        movies = random.choice(options['StreamingMovies'])
+        contract = random.choice(options['Contract'])
+        billing = random.choice(options['PaperlessBilling'])
+        payment = random.choice(options['PaymentMethod'])
         monthly = round(random.uniform(20, 120), 2)
         total = round(tenure * monthly, 2)
-        
-        cust_row = [i,random.choice(options['email']), name]
-        for key in ['gender','SeniorCitizen', 'Partner', 'Dependents']:
-            if key == 'SeniorCitizen':
-                cust_row.append(random.choice([0, 1]))
-            else:
-                cust_row.append(random.choice(options[key]))
-        
-        cust_row.append(tenure)
-        
-        for key in ['PhoneService', 'MultipleLines', 'InternetService', 'OnlineSecurity', 
-                    'OnlineBackup', 'DeviceProtection', 'TechSupport', 'StreamingTV', 'StreamingMovies',
-                    'Contract', 'PaperlessBilling', 'PaymentMethod']:
-            cust_row.append(random.choice(options[key]))
-            
-        cust_row.extend([monthly, total, "Unassigned", 0, None])
-        customers.append(tuple(cust_row))
+
+        customers.append((
+            i, name, email, gender, senior, partner, dependents, tenure,
+            phone, multi, internet, sec, backup, device, tech, tv, movies,
+            contract, billing, payment, monthly, total, "Unassigned", 0, None, 0.0
+        ))
 
     cursor.executemany('''
-    INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    INSERT INTO customers VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     ''', customers)
 
     conn.commit()
     conn.close()
-    print("Database initialized with 100% Telco feature compatibility.")
+    print("Database initialized with full Telco schema including churn_probability.")
 
 if __name__ == "__main__":
     init_db()
