@@ -11,6 +11,7 @@ import os
 import sys
 import warnings
 import requests
+import io
 from datetime import datetime
 from streamlit_autorefresh import st_autorefresh
 from dotenv import load_dotenv
@@ -411,6 +412,104 @@ for col, (label, val, color, delta) in zip(cols, metrics):
 st.write("")
 
 # ════════════════════════════════════════════════════════════════════════════
+# SYSTEM ARCHITECTURE PANEL  (collapsible — great for demo / judges)
+# ════════════════════════════════════════════════════════════════════════════
+with st.expander("🏗️ System Architecture — How the Agent Works", expanded=False):
+    arch_l, arch_r = st.columns([3, 2])
+    with arch_l:
+        st.markdown("""
+<div style='font-family:monospace;font-size:.78rem;color:#00F5FF;
+            background:rgba(0,0,0,.5);border:1px solid rgba(0,245,255,.15);
+            border-radius:12px;padding:18px 22px;line-height:1.8'>
+<span style='color:#C77DFF;font-weight:bold'>STREAMLIT WAR ROOM UI  (port 5000)</span><br>
+&nbsp;&nbsp;Segmentation · Customers · Cohort · Optimizer · Simulator · Debate<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│  HTTP JSON-RPC 2.0<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;▼<br>
+<span style='color:#C77DFF;font-weight:bold'>FASTAPI MCP SERVER  (port 8000)</span><br>
+&nbsp;&nbsp;get_customers · segment_customers · generate_discount · flag_vip<br>
+&nbsp;&nbsp;initiate_boardroom_debate · draft_empathy_email · trigger_macro_optimization<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;▼&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;▼<br>
+<span style='color:#4DFF88;font-weight:bold'>BOARDROOM DEBATE</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;<span style='color:#FFD700;font-weight:bold'>DECISION ENGINE</span><br>
+&nbsp;CS Agent  ↔  CFO Agent&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;SciPy SLSQP<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;↓  Orchestrator&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Maximize Σ P·LTV·Uplift<br>
+<span style='color:#FF6B9D;font-weight:bold'>GEMINI 2.0 FLASH</span>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;s.t. Σ d·LTV ≤ Budget<br>
+&nbsp;(→ simulation fallback)&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;0 ≤ d ≤ 0.30<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;▼<br>
+<span style='color:#C77DFF;font-weight:bold'>ML SCORING ENGINE</span><br>
+&nbsp;Random Forest · EconML X-Learner<br>
+&nbsp;Uplift: 1 − e^(−10·d) · Feature Importance Drivers<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;│<br>
+&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;▼<br>
+<span style='color:#00F5FF;font-weight:bold'>SQLITE / SUPABASE CRM  +  AGENT ACTION LOG</span>
+</div>
+""", unsafe_allow_html=True)
+
+    with arch_r:
+        st.markdown("""
+<div style='background:rgba(0,0,0,.4);border:1px solid rgba(112,0,255,.25);
+            border-radius:12px;padding:18px 20px;font-size:.82rem;line-height:2'>
+<div style='color:#C77DFF;font-weight:bold;font-family:Orbitron;
+            font-size:.85rem;margin-bottom:10px'>AGENT TOOLS (MCP)</div>
+
+<span style='color:#00F5FF'>►</span> <b>generate_discount</b><br>
+<span style='font-size:.74rem;color:#888'>Creates personalised discount code in CRM</span><br>
+
+<span style='color:#00F5FF'>►</span> <b>flag_vip</b><br>
+<span style='font-size:.74rem;color:#888'>Elevates customer tier, logs action</span><br>
+
+<span style='color:#00F5FF'>►</span> <b>initiate_boardroom_debate</b><br>
+<span style='font-size:.74rem;color:#888'>Runs 3-agent Gemini debate on one customer</span><br>
+
+<span style='color:#00F5FF'>►</span> <b>draft_empathy_email</b><br>
+<span style='font-size:.74rem;color:#888'>Writes personalised retention email</span><br>
+
+<span style='color:#00F5FF'>►</span> <b>trigger_macro_optimization</b><br>
+<span style='font-size:.74rem;color:#888'>SLSQP across all customers + budget</span><br>
+
+<div style='margin-top:14px;padding-top:12px;border-top:1px solid rgba(255,255,255,.08);
+            color:#4DFF88;font-size:.78rem'>
+✅ All tools work without API keys<br>
+✅ Gemini adds live AI reasoning<br>
+✅ Every action logged to DB
+</div>
+</div>
+""", unsafe_allow_html=True)
+
+    # Mini agent flow chart
+    flow_nodes = ['User selects<br>customer', 'MCP Server<br>receives call',
+                  'Gemini debate<br>CS vs CFO', 'Orchestrator<br>decides discount',
+                  'Action logged<br>to CRM DB']
+    fig_flow = go.Figure()
+    for i, node in enumerate(flow_nodes):
+        clr = ['#7000FF','#00F5FF','#FF4D4D','#4DFF88','#FFD700'][i]
+        fig_flow.add_trace(go.Scatter(
+            x=[i], y=[0], mode='markers+text',
+            marker=dict(size=52, color=clr, opacity=0.85,
+                        line=dict(color='white', width=2)),
+            text=[node], textposition='top center',
+            textfont=dict(size=10, color='white'),
+            showlegend=False
+        ))
+        if i < len(flow_nodes) - 1:
+            fig_flow.add_annotation(x=i+0.5, y=0, text="→",
+                                    font=dict(size=20, color='#888'),
+                                    showarrow=False)
+    DARK_FLOW = dict(
+        paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(5,5,15,.4)',
+        font_color="#C0C0C0", font_family="Inter",
+        height=140,
+        margin=dict(t=36, b=50, l=10, r=10),
+        xaxis=dict(visible=False, gridcolor='rgba(255,255,255,.05)'),
+        yaxis=dict(visible=False, gridcolor='rgba(255,255,255,.05)'),
+        title='Multi-Agent Execution Flow',
+        title_font_color='#C77DFF', title_font_family='Orbitron',
+    )
+    fig_flow.update_layout(**DARK_FLOW)
+    st.plotly_chart(fig_flow, use_container_width=True)
+
+# ════════════════════════════════════════════════════════════════════════════
 # TABS
 # ════════════════════════════════════════════════════════════════════════════
 tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
@@ -521,7 +620,20 @@ with tab2:
               .format({'TotalCharges':'${:,.2f}','MonthlyCharges':'${:,.2f}',
                        'churn_probability':'{:.1f}%'}))
     st.dataframe(styled, use_container_width=True, height=380)
-    st.caption(f"Showing {len(filt)} of {len(df)} customers")
+
+    exp_l, exp_r = st.columns([3, 1])
+    with exp_l:
+        st.caption(f"Showing {len(filt)} of {len(df)} customers")
+    with exp_r:
+        csv_buf = io.StringIO()
+        filt[display_cols].to_csv(csv_buf, index=False)
+        st.download_button(
+            label="⬇ Export CSV",
+            data=csv_buf.getvalue(),
+            file_name=f"retention_customers_{datetime.now().strftime('%Y%m%d')}.csv",
+            mime="text/csv",
+            use_container_width=True
+        )
 
     # ── Customer detail + actions ──────────────────────────────────────────
     with st.expander("🔍 Customer Detail & Actions", expanded=False):
@@ -877,6 +989,14 @@ with tab4:
                     {'Discount (%)':'{:.1f}%','Cost ($)':'${:,.2f}',
                      'Expected Save ($)':'${:,.2f}'}),
                     use_container_width=True)
+                alloc_csv = io.StringIO()
+                alloc_df.to_csv(alloc_csv, index=False)
+                st.download_button(
+                    label="⬇ Download Allocation Report (CSV)",
+                    data=alloc_csv.getvalue(),
+                    file_name=f"budget_allocation_{datetime.now().strftime('%Y%m%d')}.csv",
+                    mime="text/csv"
+                )
 
         # ── Strategy Comparison: Naive vs SLSQP ──────────────────────────
         st.markdown("<div class='section-title'>Strategy Comparison: Naive vs SLSQP</div>",
