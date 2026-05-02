@@ -33,56 +33,77 @@ Every business loses customers. But most retention tools only **describe** the p
 
 ## 🏗️ System Architecture
 
+```mermaid
+flowchart TD
+    subgraph UI["🖥️ Streamlit War Room UI (port 5000)"]
+        UI_tabs["Segmentation · Customers · Cohort · Optimizer\nKPI Simulator · Agent Debate · Priority Queue"]
+    end
+
+    subgraph MCP["⚡ FastAPI MCP Server (port 8000)"]
+        direction LR
+        T1["get_customers"]
+        T2["segment_customers"]
+        T3["generate_discount"]
+        T4["flag_vip"]
+        T5["initiate_boardroom_debate"]
+        T6["draft_empathy_email"]
+        T7["trigger_macro_optimization"]
+    end
+
+    subgraph DB["🗄️ CRM Database"]
+        SQLite["SQLite (local)\n50 customers + agent logs"]
+        Supabase["Supabase (cloud)\nif credentials provided"]
+    end
+
+    subgraph ORCH["🧠 Agent Orchestration Layer"]
+        subgraph DEBATE["Boardroom Debate"]
+            CS["👤 Customer Success\nAgent"]
+            CFO["💼 CFO Agent"]
+            EXEC["🎯 Executive\nOrchestrator"]
+            CS <-->|argue| CFO
+            CFO --> EXEC
+            CS --> EXEC
+        end
+
+        subgraph OPTIMIZER["Decision Engine"]
+            SLSQP["SciPy SLSQP\nConstrained NLP\n\nMaximise: Σ P·LTV·Uplift\ns.t. Σ d·LTV ≤ Budget\nBounds: 0 ≤ d ≤ 0.30"]
+        end
+
+        subgraph GEMINI["Gemini 2.0 Flash (google-genai)"]
+            G1["Multi-persona debate generation"]
+            G2["Empathy email drafting"]
+            G3["Deterministic simulation fallback"]
+        end
+
+        DEBATE --> GEMINI
+    end
+
+    subgraph ML["🔬 ML Scoring Engine"]
+        RF["Random Forest\nChurn Probability"]
+        XL["EconML X-Learner\nCausal Uplift ITE"]
+        FI["Feature Importances\n(per-customer explainability)"]
+        RF --> FI
+        XL --> FI
+    end
+
+    UI_tabs -->|"HTTP / JSON-RPC 2.0"| MCP
+    MCP -->|reads / writes| DB
+    MCP -->|orchestrates| ORCH
+    ORCH -->|scores & uplift| ML
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│                    STREAMLIT WAR ROOM UI                        │
-│         (Segmentation · Customers · Cohort · Optimizer          │
-│          KPI Simulator · Agent Debate · Priority Queue)         │
-└──────────────────────┬──────────────────────────────────────────┘
-                       │ HTTP / JSON-RPC 2.0
-                       ▼
-┌─────────────────────────────────────────────────────────────────┐
-│               FASTAPI  MCP  SERVER  (port 8000)                 │
-│                                                                 │
-│  Tools exposed via MCP protocol:                                │
-│  • get_customers          • segment_customers                   │
-│  • generate_discount      • flag_vip                           │
-│  • initiate_boardroom_debate                                    │
-│  • draft_empathy_email    • trigger_macro_optimization          │
-└───────┬────────────────────┬────────────────────────────────────┘
-        │                    │
-        ▼                    ▼
-┌───────────────┐   ┌────────────────────────────────────────────┐
-│  SQLITE / CRM │   │         AGENT ORCHESTRATION LAYER          │
-│  DATABASE     │   │                                            │
-│               │   │  ┌─────────────┐   ┌──────────────────┐   │
-│  50 customers │   │  │ Boardroom   │   │ Decision Engine  │   │
-│  + agent logs │   │  │ Debate      │   │ (SciPy SLSQP)    │   │
-│               │   │  │             │   │                  │   │
-│  (Supabase    │   │  │ CS Agent ↔  │   │ Maximize:        │   │
-│   if creds    │   │  │ CFO Agent   │   │ Σ P·LTV·Uplift   │   │
-│   provided)   │   │  │     ↓       │   │ s.t. Σd·LTV≤B    │   │
-│               │   │  │ Orchestrator│   │                  │   │
-└───────────────┘   │  └──────┬──────┘   └──────────────────┘   │
-                    │         │                                   │
-                    │         ▼                                   │
-                    │  ┌─────────────────────────────────────┐   │
-                    │  │     GEMINI 2.0 FLASH  (google.genai) │   │
-                    │  │  • Multi-persona debate generation  │   │
-                    │  │  • Empathy email drafting           │   │
-                    │  │  • Falls back to deterministic sim  │   │
-                    │  └─────────────────────────────────────┘   │
-                    └────────────────────────────────────────────┘
-                               │
-                               ▼
-                    ┌──────────────────────┐
-                    │   ML SCORING ENGINE  │
-                    │   Random Forest      │
-                    │   + EconML X-Learner │
-                    │   Feature Importances│
-                    │   Uplift: 1−e^{-10d} │
-                    └──────────────────────┘
-```
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ---
 
