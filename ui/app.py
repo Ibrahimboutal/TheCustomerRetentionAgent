@@ -20,13 +20,19 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
 
+import sqlite3
+
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
+DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
 
 @st.cache_resource
 def get_supabase():
     if SUPABASE_URL and SUPABASE_KEY:
-        return create_client(SUPABASE_URL, SUPABASE_KEY)
+        try:
+            return create_client(SUPABASE_URL, SUPABASE_KEY)
+        except Exception:
+            return None
     return None
 
 supabase = get_supabase()
@@ -137,12 +143,21 @@ st.markdown("""
 
 def load_data():
     if supabase:
-        res = supabase.table("customers").select("*").execute()
-        df = pd.DataFrame(res.data)
-        if not df.empty:
-            expected = ["customer_id", "name", "email", "gender", "SeniorCitizen", "Partner", "Dependents", "tenure", "PhoneService", "MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies", "Contract", "PaperlessBilling", "PaymentMethod", "MonthlyCharges", "TotalCharges", "segment", "vip_flag", "discount_code"]
-            mapping = {col.lower(): col for col in expected}
-            df.columns = [mapping.get(c.lower(), c) for c in df.columns]
+        try:
+            res = supabase.table("customers").select("*").execute()
+            df = pd.DataFrame(res.data)
+            if not df.empty:
+                expected = ["customer_id", "name", "email", "gender", "SeniorCitizen", "Partner", "Dependents", "tenure", "PhoneService", "MultipleLines", "InternetService", "OnlineSecurity", "OnlineBackup", "DeviceProtection", "TechSupport", "StreamingTV", "StreamingMovies", "Contract", "PaperlessBilling", "PaymentMethod", "MonthlyCharges", "TotalCharges", "segment", "vip_flag", "discount_code"]
+                mapping = {col.lower(): col for col in expected}
+                df.columns = [mapping.get(c.lower(), c) for c in df.columns]
+                return df
+        except Exception:
+            pass
+    # Fallback to local SQLite
+    if os.path.exists(DB_PATH):
+        conn = sqlite3.connect(DB_PATH)
+        df = pd.read_sql_query("SELECT * FROM customers", conn)
+        conn.close()
         return df
     return pd.DataFrame()
 
@@ -156,7 +171,7 @@ st_autorefresh(interval=5000, key="datarefresh")
 df = load_data()
 
 if df.empty:
-    st.error("No data found in Supabase. Please check your connection.")
+    st.error("No data found. Please check your database connection or ensure data/mock_crm.db exists.")
     st.stop()
 
 # Top Metrics
@@ -260,7 +275,10 @@ with tab3:
 with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/robot-3.png", width=80)
     st.title("MCP Controller")
-    st.success("🟢 Connected to Supabase")
+    if supabase:
+        st.success("🟢 Connected to Supabase")
+    else:
+        st.info("🟡 Running on Local SQLite DB")
     st.divider()
     st.write("The Gemini Agent is currently processing churn risks and updating segments in real-time.")
     if st.button("Force DB Refresh"):
