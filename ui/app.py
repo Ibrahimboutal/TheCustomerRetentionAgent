@@ -157,6 +157,59 @@ st.markdown("""
   .compare-val   { font-family:'Orbitron',sans-serif; font-size:1.6rem; font-weight:700; margin:8px 0 4px; }
   .compare-delta { font-size:.8rem; }
   [data-testid="stSidebar"] { background:rgba(5,5,15,.95) !important; border-right:1px solid var(--border); }
+
+  /* ── Chat bubbles ─────────────────────────────────────── */
+  .chat-row { display:flex; margin:10px 0; }
+  .chat-row.right { justify-content:flex-end; }
+  .chat-row.center { justify-content:center; }
+  .bubble {
+    max-width:78%; padding:14px 18px; border-radius:18px;
+    font-size:.84rem; line-height:1.6; position:relative;
+  }
+  .bubble-cs {
+    background:rgba(77,255,136,.1); border:1px solid rgba(77,255,136,.35);
+    color:#C8FFC8; border-radius:4px 18px 18px 18px;
+  }
+  .bubble-cfo {
+    background:rgba(255,107,107,.1); border:1px solid rgba(255,107,107,.35);
+    color:#FFC8C8; border-radius:18px 4px 18px 18px;
+  }
+  .bubble-orch {
+    background:rgba(0,245,255,.08); border:1px solid rgba(0,245,255,.3);
+    color:#C0FBFF; border-radius:18px; width:88%; text-align:center;
+  }
+  .bubble-label {
+    font-size:.68rem; font-weight:700; text-transform:uppercase;
+    letter-spacing:1px; margin-bottom:6px; opacity:.8;
+  }
+
+  /* ── Autonomous scan feed ──────────────────────────────── */
+  .scan-line {
+    background:rgba(0,0,0,.5); border-left:2px solid #4DFF88;
+    padding:6px 14px; margin:3px 0; border-radius:0 8px 8px 0;
+    font-size:.8rem; color:#C0C0C0; font-family:'Courier New',monospace;
+  }
+
+  /* ── Briefing card ────────────────────────────────────── */
+  .briefing-card {
+    background:rgba(112,0,255,.06); border:1px solid rgba(112,0,255,.3);
+    border-radius:16px; padding:24px 28px; line-height:1.8;
+    font-size:.85rem; color:#E0E0FF;
+  }
+
+  /* ── Pulsing live dot ──────────────────────────────────── */
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.3} }
+  .live-dot {
+    display:inline-block; width:8px; height:8px; border-radius:50%;
+    background:#4DFF88; margin-right:6px;
+    animation:pulse 1.8s ease-in-out infinite;
+  }
+
+  /* ── What-if card ──────────────────────────────────────── */
+  .whatif-card {
+    background:rgba(0,245,255,.05); border:1px solid rgba(0,245,255,.2);
+    border-radius:12px; padding:16px 20px; margin-top:12px;
+  }
 </style>
 """, unsafe_allow_html=True)
 
@@ -734,6 +787,57 @@ with tab2:
             else:
                 st.info("ML model not loaded — driver analysis unavailable.")
 
+            # ── What-If Intervention Simulator ───────────────────────────
+            st.markdown("**What-If Intervention Simulator**")
+            wi_col1, wi_col2 = st.columns([1, 1])
+            with wi_col1:
+                wi_discount = st.slider(
+                    "Proposed discount (%)", 0, 30, 15,
+                    key=f"wi_{detail_id}"
+                )
+                wi_loyalty = st.checkbox(
+                    "Add loyalty tier upgrade", key=f"wil_{detail_id}"
+                )
+            with wi_col2:
+                base_churn_wi = float(row.get('churn_probability', 30))
+                loyalty_boost  = 0.08 if wi_loyalty else 0.0
+                discount_uplift = float(UPLIFT(wi_discount / 100))
+                new_churn = max(0.5, base_churn_wi * (1 - discount_uplift) - loyalty_boost * 100)
+                delta_pct  = base_churn_wi - new_churn
+                ltv_wi     = float(row.get('TotalCharges', 1000))
+                cost_wi    = ltv_wi * wi_discount / 100
+                expected_save = ltv_wi * delta_pct / 100
+                roi_wi     = expected_save / max(cost_wi, 1)
+                st.markdown(f"""
+                <div class='whatif-card'>
+                  <div style='display:flex;gap:24px;flex-wrap:wrap'>
+                    <div>
+                      <div style='font-size:.7rem;color:#888;text-transform:uppercase;letter-spacing:1px'>
+                        Current Churn Risk</div>
+                      <div style='font-family:Orbitron;font-size:1.4rem;color:#FF6B6B'>
+                        {base_churn_wi:.1f}%</div>
+                    </div>
+                    <div style='align-self:center;font-size:1.5rem;color:#888'>→</div>
+                    <div>
+                      <div style='font-size:.7rem;color:#888;text-transform:uppercase;letter-spacing:1px'>
+                        Post-Intervention</div>
+                      <div style='font-family:Orbitron;font-size:1.4rem;color:#4DFF88'>
+                        {new_churn:.1f}%</div>
+                    </div>
+                    <div>
+                      <div style='font-size:.7rem;color:#888;text-transform:uppercase;letter-spacing:1px'>
+                        Risk Reduction</div>
+                      <div style='font-family:Orbitron;font-size:1.4rem;color:#00F5FF'>
+                        ↓{delta_pct:.1f}pp</div>
+                    </div>
+                  </div>
+                  <div style='margin-top:12px;font-size:.8rem;color:#AAA'>
+                    💰 Intervention cost: <b style='color:#FFD700'>${cost_wi:,.0f}</b> &nbsp;|&nbsp;
+                    📈 Expected save: <b style='color:#4DFF88'>${expected_save:,.0f}</b> &nbsp;|&nbsp;
+                    ROI: <b style='color:#00F5FF'>{roi_wi:.1f}x</b>
+                  </div>
+                </div>""", unsafe_allow_html=True)
+
 
 # ═══ TAB 3 — COHORT ANALYSIS ═════════════════════════════════════════════════
 with tab3:
@@ -1235,13 +1339,62 @@ with tab5:
 
 
 # ═══ TAB 6 — AGENT DEBATE ════════════════════════════════════════════════════
-with tab6:
-    st.markdown("<div class='section-title'>Autonomous Boardroom Debate</div>",
-                unsafe_allow_html=True)
 
-    if not GOOGLE_API_KEY:
-        st.info("**Simulation Mode** — add `GOOGLE_API_KEY` to enable live Gemini debates.",
-                icon="ℹ️")
+def _render_chat_bubbles(messages: list):
+    """Render a list of {speaker, text} dicts as styled chat bubbles."""
+    BUBBLE_META = {
+        "CS":   ("left",   "bubble-cs",   "🤝 Customer Success Agent", "#4DFF88"),
+        "CFO":  ("right",  "bubble-cfo",  "💼 CFO",                    "#FF6B6B"),
+        "ORCH": ("center", "bubble-orch", "⚖️ Executive Orchestrator",  "#00F5FF"),
+    }
+    html_parts = []
+    for m in messages:
+        side, cls, label, color = BUBBLE_META.get(
+            m.get("speaker","ORCH"),
+            ("center","bubble-orch","Agent","#00F5FF")
+        )
+        text = str(m.get("text","")).replace("\n", "<br>")
+        html_parts.append(f"""
+        <div class='chat-row {side}'>
+          <div class='bubble {cls}'>
+            <div class='bubble-label' style='color:{color}'>{label}</div>
+            {text}
+          </div>
+        </div>""")
+    st.markdown("\n".join(html_parts), unsafe_allow_html=True)
+
+
+with tab6:
+    st.markdown(
+        "<div class='section-title'>"
+        "<span class='live-dot'></span>Autonomous Boardroom Debate"
+        "</div>",
+        unsafe_allow_html=True
+    )
+
+    mode_lbl = "🤖 Gemini AI" if GOOGLE_API_KEY else "🎭 Deterministic Simulation"
+    st.caption(f"Agent mode: {mode_lbl}  ·  "
+               "All debates are logged and auditable  ·  "
+               "Switch to Gemini by adding `GOOGLE_API_KEY`")
+
+    # ── Executive War Room Briefing ───────────────────────────────────────────
+    with st.expander("📋 Executive War Room Briefing", expanded=False):
+        st.markdown("Generate a C-suite strategic summary of the current retention situation.")
+        if st.button("⚡ Generate Briefing", key="gen_briefing", use_container_width=False):
+            with st.spinner("Analysing CRM data and drafting briefing…"):
+                from agent.boardroom import BoardroomDebate
+                briefing_text = BoardroomDebate.generate_executive_briefing(df, GOOGLE_API_KEY or "")
+            st.markdown(
+                f"<div class='briefing-card'>{briefing_text}</div>",
+                unsafe_allow_html=True
+            )
+            write_log("executive_briefing", "ALL", "Briefing generated")
+
+    st.write("")
+
+    # ── Single-Customer Debate ────────────────────────────────────────────────
+    st.markdown("<div class='section-title'>Single Customer Debate</div>",
+                unsafe_allow_html=True)
 
     bc1, bc2 = st.columns([2, 1])
     with bc1:
@@ -1261,85 +1414,187 @@ with tab6:
     if len(sel):
         sr = sel.iloc[0]
         cp = float(sr.get('churn_probability', 0))
-        bc = "risk-high" if cp>60 else ("risk-med" if cp>30 else "risk-low")
+        bc_cls = "risk-high" if cp > 60 else ("risk-med" if cp > 30 else "risk-low")
         st.markdown(
             f"<span class='info-pill'>{sr.get('segment','—')}</span>"
             f"<span class='info-pill'>${float(sr.get('TotalCharges',0)):,.0f} LTV</span>"
             f"<span class='info-pill'>{sr.get('Contract','—')}</span>"
-            f"&nbsp;&nbsp;<span class='{bc}'>{cp:.1f}% churn risk</span>",
+            f"&nbsp;&nbsp;<span class='{bc_cls}'>{cp:.1f}% churn risk</span>",
             unsafe_allow_html=True
         )
 
-    ab1, ab2 = st.columns(2)
-    with ab1: run_debate = st.button("🚀 Execute Boardroom Debate", use_container_width=True)
-    with ab2: run_email  = st.button("✉️ Draft Retention Email",   use_container_width=True)
+    db1, db2 = st.columns(2)
+    with db1: run_debate = st.button("🚀 Execute Boardroom Debate", use_container_width=True)
+    with db2: run_email  = st.button("✉️ Draft Retention Email",   use_container_width=True)
 
     if run_debate:
-        with st.status("Initialising agent debate...", expanded=True) as status:
-            st.write("🔍 Fetching customer ML risk profile...")
-            time.sleep(0.3)
-            st.write("⚖️ Engaging Customer Success vs CFO personas...")
-            time.sleep(0.3)
-            st.write("🧠 Orchestrator computing final decision...")
+        with st.status("Initiating multi-agent debate…", expanded=True) as status:
+            st.write("🔍 Fetching customer ML risk profile…")
+            time.sleep(0.25)
+            st.write("🤝 Customer Success Agent drafting proposal…")
+            time.sleep(0.25)
+            st.write("💼 CFO reviewing margin impact…")
+            time.sleep(0.25)
+            st.write("⚖️ Orchestrator computing final verdict…")
             try:
                 debate_data = mcp_call("initiate_boardroom_debate",
                                        {"customer_id": int(selected_id)}, timeout=30)
+                if not debate_data.get("messages"):
+                    raise ValueError("no structured messages")
             except Exception:
                 from agent.boardroom import BoardroomDebate
-                sr_ = df[df['customer_id']==selected_id].iloc[0]
+                sr_ = df[df['customer_id'] == selected_id].iloc[0]
                 engine = BoardroomDebate()
                 debate_data = engine.run_debate(
-                    sr_['name'], f"{float(sr_.get('churn_probability',30)):.1f}%",
+                    sr_['name'],
+                    f"{float(sr_.get('churn_probability', 30)):.1f}%",
                     float(sr_.get('TotalCharges', 1000))
                 )
 
             if 'error' not in debate_data:
                 ai_lbl = "🤖 Gemini AI" if debate_data.get('ai_powered') else "🎭 Simulation"
-                st.markdown(f"""
-                <div class='thought-stream'>
-                  <span class='agent-tag'>[DEBATE TRANSCRIPT]</span> {ai_lbl}<br><br>
-                  {debate_data.get('debate_transcript','—')}
-                </div>""", unsafe_allow_html=True)
-                dc1, dc2 = st.columns(2)
-                with dc1: st.success(f"✅ **{debate_data.get('discount',0)}% Discount Approved**")
-                with dc2: st.info(f"📋 {debate_data.get('summary','')}")
-                status.update(label="✅ Debate Complete", state="complete", expanded=False)
-                write_log("boardroom_debate", str(selected_id),
-                          f"{debate_data.get('discount',0)}% approved")
+                st.write(f"✅ Debate complete — {ai_lbl}")
+                status.update(label=f"✅ Verdict Reached · {ai_lbl}",
+                              state="complete", expanded=False)
+
             else:
                 st.error(debate_data['error'])
                 status.update(label="❌ Debate Failed", state="error")
 
+        if 'error' not in debate_data:
+            msgs = debate_data.get("messages", [])
+            if msgs:
+                st.markdown("**Boardroom Transcript**")
+                _render_chat_bubbles(msgs)
+            else:
+                st.markdown(
+                    f"<div class='thought-stream'>{debate_data.get('debate_transcript','')}</div>",
+                    unsafe_allow_html=True
+                )
+            dc1, dc2 = st.columns(2)
+            with dc1:
+                st.success(f"✅ **{debate_data.get('discount', 0)}% Discount Approved**")
+            with dc2:
+                st.info(f"📋 {debate_data.get('summary','')}")
+            write_log("boardroom_debate", str(selected_id),
+                      f"{debate_data.get('discount',0)}% approved")
+
     if run_email:
-        with st.spinner("Generating email..."):
+        with st.spinner("Generating personalised retention email…"):
             try:
                 result = mcp_call("draft_empathy_email",
                                   {"customer_id": int(selected_id), "tone": tone}, timeout=20)
             except Exception as e:
                 result = {"email_body": f"Error: {e}", "ai_powered": False}
-            lbl = "✨ Gemini" if result.get('ai_powered') else "📝 Template"
-            st.markdown(f"**{lbl} Retention Email**")
-            st.text_area("Preview", value=result.get('email_body',''), height=200)
-            write_log("draft_email", str(selected_id),
-                      f"{tone} email — {'AI' if result.get('ai_powered') else 'template'}")
+        ai_tag = "🤖 Gemini" if result.get('ai_powered') else "📝 Template"
+        body   = result.get('email_body', '')
+        st.markdown(f"""
+        <div style='background:rgba(112,0,255,.08);border:1px solid rgba(112,0,255,.3);
+                    border-radius:14px;padding:20px 24px;margin-top:12px'>
+          <div style='font-size:.7rem;color:#888;text-transform:uppercase;
+                      letter-spacing:1px;margin-bottom:10px'>{ai_tag} · {tone.title()} Tone</div>
+          <pre style='white-space:pre-wrap;font-family:inherit;font-size:.83rem;
+                      color:#E0E0FF;margin:0'>{body}</pre>
+        </div>""", unsafe_allow_html=True)
+        write_log("draft_email", str(selected_id),
+                  f"{tone} — {'AI' if result.get('ai_powered') else 'template'}")
 
     st.write("---")
+
+    # ── Autonomous Batch Scan ─────────────────────────────────────────────────
+    st.markdown("<div class='section-title'>⚡ Autonomous Batch Agent Scan</div>",
+                unsafe_allow_html=True)
+    st.markdown(
+        "The agent autonomously loops through every at-risk customer, runs a boardroom debate "
+        "for each, and logs all decisions — no human in the loop."
+    )
+
+    at_risk_scan = (df[df['segment'] == 'At Risk']
+                    .sort_values('churn_probability', ascending=False))
+    max_scan = max(1, len(at_risk_scan))
+
+    sc_col1, sc_col2 = st.columns([1, 2])
+    with sc_col1:
+        scan_n = st.slider(
+            "Customers to scan", 1, max_scan,
+            min(5, max_scan), key="scan_slider"
+        )
+        run_scan = st.button(
+            f"🤖 Launch Autonomous Scan ({scan_n} customers)",
+            use_container_width=True
+        )
+
+    with sc_col2:
+        scan_placeholder = st.empty()
+
+    if run_scan:
+        from agent.boardroom import BoardroomDebate as _BD
+        _engine = _BD()
+        scan_log   = []
+        total_cost = 0.0
+        total_save = 0.0
+        prog       = st.progress(0.0)
+
+        for i, (_, cust) in enumerate(at_risk_scan.head(scan_n).iterrows()):
+            cname    = cust['name']
+            crisk    = float(cust['churn_probability'])
+            cltv     = float(cust['TotalCharges'])
+            cid_scan = int(cust['customer_id'])
+
+            # Run debate
+            ddata    = _engine.run_debate(cname, f"{crisk:.1f}%", cltv)
+            disc     = ddata.get('discount', 10)
+            cost_s   = cltv * disc / 100
+            save_s   = cltv * float(UPLIFT(disc/100))
+            total_cost += cost_s
+            total_save += save_s
+
+            icon = "🔴" if crisk > 60 else ("🟡" if crisk > 35 else "🟢")
+            scan_log.append(
+                f"{icon} <b>{cname}</b> &nbsp;·&nbsp; {crisk:.0f}% risk "
+                f"&nbsp;→&nbsp; <b style='color:#4DFF88'>{disc}% discount</b> approved "
+                f"&nbsp;·&nbsp; cost <b>${cost_s:,.0f}</b> / save ~<b>${save_s:,.0f}</b>"
+            )
+            write_log("autonomous_scan", str(cid_scan), f"{disc}% approved")
+
+            prog.progress((i + 1) / scan_n)
+            lines_html = "".join(
+                f"<div class='scan-line'>{ln}</div>" for ln in scan_log
+            )
+            scan_placeholder.markdown(lines_html, unsafe_allow_html=True)
+            time.sleep(0.45)
+
+        prog.empty()
+        net = total_save - total_cost
+        st.success(
+            f"🎯 Scan complete — {scan_n} customers processed &nbsp;·&nbsp; "
+            f"Intervention budget: **${total_cost:,.0f}** &nbsp;·&nbsp; "
+            f"Expected revenue saved: **${total_save:,.0f}** &nbsp;·&nbsp; "
+            f"Net gain: **${net:,.0f}**"
+        )
+
+    st.write("---")
+
+    # ── Historical Agent Action Log ───────────────────────────────────────────
     st.markdown("<div class='section-title'>Historical Agent Action Log</div>",
                 unsafe_allow_html=True)
     logs_df = get_logs()
     if not logs_df.empty:
         for _, lr in logs_df.iterrows():
-            ts   = str(lr.get('timestamp',''))[:19]
-            tool = lr.get('tool_name','')
-            res  = lr.get('result','')
+            ts   = str(lr.get('timestamp', ''))[:19]
+            tool = lr.get('tool_name', '')
+            res  = lr.get('result', '')
             st.markdown(f"""
-            <div class='thought-stream' style='color:#E0AAFF;border-left-color:#7000FF;font-size:.8rem'>
+            <div class='thought-stream'
+                 style='color:#E0AAFF;border-left-color:#7000FF;font-size:.8rem'>
               <span style='color:var(--primary)'>[{ts}]</span> <b>{tool}</b>: {res}
             </div>""", unsafe_allow_html=True)
     else:
         st.markdown(
-            "<div class='thought-stream'>No agent actions logged yet.</div>",
-            unsafe_allow_html=True)
+            "<div class='thought-stream'>No agent actions logged yet — "
+            "run a debate or autonomous scan to populate the log.</div>",
+            unsafe_allow_html=True
+        )
 
 
 # ════════════════════════════════════════════════════════════════════════════
@@ -1349,7 +1604,7 @@ with st.sidebar:
     st.image("https://img.icons8.com/fluency/96/robot-3.png", width=65)
     st.markdown("<h3 style='color:#00F5FF;font-family:Orbitron;margin:0'>WAR ROOM</h3>",
                 unsafe_allow_html=True)
-    st.markdown("<p style='color:#666;font-size:.75rem;margin-top:2px'>v3.0 · Causal AI</p>",
+    st.markdown("<p style='color:#666;font-size:.75rem;margin-top:2px'>v4.0 · Causal AI</p>",
                 unsafe_allow_html=True)
 
     # System status
