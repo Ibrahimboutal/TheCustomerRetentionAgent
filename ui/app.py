@@ -1515,10 +1515,14 @@ with tab6:
 
     sc_col1, sc_col2 = st.columns([1, 2])
     with sc_col1:
-        scan_n = st.slider(
-            "Customers to scan", 1, max_scan,
-            min(5, max_scan), key="scan_slider"
-        )
+        if max_scan > 1:
+            scan_n = st.slider(
+                "Customers to scan", 1, max_scan,
+                min(5, max_scan), key="scan_slider"
+            )
+        else:
+            scan_n = 1
+            st.info(f"Scanning **1** at-risk customer (only 1 found).")
         run_scan = st.button(
             f"🤖 Launch Autonomous Scan ({scan_n} customers)",
             use_container_width=True
