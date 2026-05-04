@@ -1,5 +1,5 @@
-from fastapi import FastAPI, Body, Response, Request
-from pydantic import BaseModel
+from fastapi import FastAPI, Body, Response, Request, HTTPException
+import logging
 import os
 import sqlite3
 import pandas as pd
@@ -17,11 +17,22 @@ import warnings
 from typing import Optional, Any
 from dotenv import load_dotenv
 
+# Ensure fixed random seeds for reproducibility
+np.random.seed(42)
+random.seed(42)
+
 load_dotenv()
 
 BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if BASE_DIR not in sys.path:
     sys.path.append(BASE_DIR)
+
+# Import schemas
+from api.schemas import (
+    EventStreamRequest, EventStreamResponse,
+    GenerateDiscountRequest, FlagVipRequest, DebateRequest,
+    EmailRequest, OptimizeRequest
+)
 
 DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
 ML_DIR = os.path.join(BASE_DIR, "ml")
@@ -29,15 +40,17 @@ ML_DIR = os.path.join(BASE_DIR, "ml")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
-GOOGLE_CLOUD_PROJECT = os.environ.get("GOOGLE_CLOUD_PROJECT")
 
-try:
-    from google.cloud import logging as cloud_logging
-    logging_client = cloud_logging.Client()
-    logging_client.setup_logging()
-    print("Cloud Logging Enabled")
-except Exception:
-    print("Cloud Logging skipped (Local mode)")
+# Model Versioning
+MODEL_VERSION = "1.0.0"
+
+# Logging Strategy
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s [%(levelname)s] %(message)s',
+    handlers=[logging.StreamHandler(sys.stdout)]
+)
+logger = logging.getLogger("RetentionAPI")
 
 try:
     from supabase import create_client as sb_create_client
@@ -45,29 +58,16 @@ try:
 except ImportError:
     _sb_available = False
 
-app = FastAPI(title="Retention-MCP-Server")
+app = FastAPI(title="Retention-MCP-Server", version=MODEL_VERSION)
 
+@app.middleware("http")
+async def add_model_version_header(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Model-Version"] = MODEL_VERSION
+    return response
 
-class MCPRequest(BaseModel):
-    jsonrpc: str = "2.0"
-    method: str
-    id: Optional[Any] = 0
-    params: Optional[dict] = {}
-
-
-def safe_json(obj):
-    if isinstance(obj, (pd.DataFrame, pd.Series)):
-        return obj.to_dict(orient="records")
-    if isinstance(obj, (np.ndarray, np.generic)):
-        return obj.tolist() if isinstance(obj, np.ndarray) else obj.item()
-    if isinstance(obj, dict):
-        return {k: safe_json(v) for k, v in obj.items()}
-    if isinstance(obj, list):
-        return [safe_json(v) for v in obj]
-    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
-        return 0.0
-    return obj
-
+class MCPRequest(from_pydantic:=True, **kwargs):
+    pass # Re-defined below inline to avoid NameError if pydantic v1 vs v2 issues. We just use dict.
 
 # =========================
 # DB LAYER
@@ -80,8 +80,8 @@ class DB:
         if cls._client is None and _sb_available and SUPABASE_URL and SUPABASE_KEY:
             try:
                 cls._client = sb_create_client(SUPABASE_URL, SUPABASE_KEY)
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"Supabase connection failed: {e}")
         return cls._client
 
     @staticmethod
@@ -105,8 +105,8 @@ class DB:
                         mapping = {c.lower(): c for c in expected}
                         df.columns = [mapping.get(c.lower(), c) for c in df.columns]
                     return df
-                except Exception:
-                    pass
+                except Exception as e:
+                    logger.error(f"Supabase query error: {e}")
 
         if os.path.exists(DB_PATH):
             conn = sqlite3.connect(DB_PATH)
@@ -134,8 +134,7 @@ class DB:
                     res = client.table(table_name).insert(dict(zip(cols, params))).execute()
                     return res.data[0].get('id') if res.data else None
             except Exception as e:
-                sys.stdout.write(f"SUPABASE WRITE ERROR: {e}\n")
-                sys.stdout.flush()
+                logger.error(f"SUPABASE WRITE ERROR: {e}")
 
         conn = sqlite3.connect(DB_PATH)
         cur = conn.cursor()
@@ -143,6 +142,20 @@ class DB:
         conn.commit()
         conn.close()
         return True
+
+
+def safe_json(obj):
+    if isinstance(obj, (pd.DataFrame, pd.Series)):
+        return obj.to_dict(orient="records")
+    if isinstance(obj, (np.ndarray, np.generic)):
+        return obj.tolist() if isinstance(obj, np.ndarray) else obj.item()
+    if isinstance(obj, dict):
+        return {k: safe_json(v) for k, v in obj.items()}
+    if isinstance(obj, list):
+        return [safe_json(v) for v in obj]
+    if isinstance(obj, float) and (math.isnan(obj) or math.isinf(obj)):
+        return 0.0
+    return obj
 
 
 # =========================
@@ -156,15 +169,18 @@ FEATURE_NAMES = ['gender', 'SeniorCitizen', 'Partner', 'Dependents', 'tenure',
                  'StreamingMovies', 'Contract', 'PaperlessBilling', 'PaymentMethod',
                  'MonthlyCharges']
 
-try:
-    with open(os.path.join(ML_DIR, 'churn_model.pkl'), 'rb') as f:
-        CHURN_MODEL = pickle.load(f)
-    with open(os.path.join(ML_DIR, 'encoders.pkl'), 'rb') as f:
-        ENCODERS = pickle.load(f)
-    print("ML models loaded.")
-except Exception as e:
-    print(f"ML LOAD ERROR: {e}")
+def load_models():
+    global CHURN_MODEL, ENCODERS
+    try:
+        with open(os.path.join(ML_DIR, 'churn_model.pkl'), 'rb') as f:
+            CHURN_MODEL = pickle.load(f)
+        with open(os.path.join(ML_DIR, 'encoders.pkl'), 'rb') as f:
+            ENCODERS = pickle.load(f)
+        logger.info(f"ML models loaded (v{MODEL_VERSION}).")
+    except Exception as e:
+        logger.error(f"ML LOAD ERROR: {e}")
 
+load_models()
 
 def safe_encode(le, value):
     val = str(value).strip()
@@ -175,6 +191,73 @@ def safe_encode(le, value):
             return le.transform([le.classes_[idx]])[0]
     return 0
 
+def predict_single(row_dict: dict) -> float:
+    if CHURN_MODEL is None:
+        raise HTTPException(status_code=503, detail="ML Model not loaded")
+    
+    features = []
+    for col in FEATURE_NAMES:
+        val = row_dict.get(col, 0)
+        if col in ENCODERS:
+            features.append(safe_encode(ENCODERS[col], val))
+        else:
+            try:
+                features.append(float(val))
+            except:
+                features.append(0.0)
+                
+    warnings.filterwarnings('ignore')
+    prob = CHURN_MODEL.predict_proba([features])[0][1]
+    return prob
+
+# =========================
+# REAL-TIME DECISION ENDPOINT
+# =========================
+@app.post("/api/v1/stream/event", response_model=EventStreamResponse)
+def handle_stream_event(req: EventStreamRequest):
+    logger.info(f"Received stream event: {req.event} for customer {req.customer_id}")
+    
+    # 1. Fetch customer current state
+    df = DB.query(f"SELECT * FROM customers WHERE customer_id = {req.customer_id}")
+    if df.empty:
+        raise HTTPException(status_code=404, detail="Customer not found")
+        
+    row = df.iloc[0].to_dict()
+    
+    # 2. Update feature state based on event (simulated logic)
+    if req.event == "failed_payment":
+        row['MonthlyCharges'] *= 1.2 # simulate late fee adding to risk
+        
+    # 3. Near Real-Time Scoring
+    new_prob = predict_single(row)
+    new_prob_pct = round(new_prob * 100, 1)
+    
+    # 4. Update Database instantly
+    DB.execute("UPDATE customers SET churn_probability = ? WHERE customer_id = ?", (new_prob_pct, req.customer_id))
+    
+    # 5. Micro-Decision Thresholding
+    action_taken = "None"
+    decision = "Hold"
+    
+    if new_prob > 0.40 and row.get('discount_code') is None:
+        # Trigger immediate retention micro-action bypassing macro-batch
+        code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+        DB.execute("UPDATE customers SET discount_code = ? WHERE customer_id = ?", (code, req.customer_id))
+        DB.execute(
+            "INSERT INTO agent_logs (timestamp, tool_name, arguments, result) VALUES (?, ?, ?, ?)",
+            (datetime.now().isoformat(), "realtime_micro_action", str(req.customer_id), f"Issued code {code}")
+        )
+        action_taken = f"Issued Discount: {code}"
+        decision = "Immediate Intervention"
+        
+    return EventStreamResponse(
+        customer_id=req.customer_id,
+        event=req.event,
+        churn_probability=new_prob_pct,
+        decision_made=decision,
+        action_taken=action_taken,
+        model_version=MODEL_VERSION
+    )
 
 # =========================
 # TOOLS
@@ -187,7 +270,7 @@ def get_customers():
 def segment_customers():
     df = DB.query("SELECT * FROM customers")
     if df.empty or CHURN_MODEL is None:
-        return {"error": "Server not ready — missing data or ML model"}
+        raise HTTPException(status_code=503, detail="Server not ready — missing data or ML model")
 
     X = pd.DataFrame()
     for col in FEATURE_NAMES:
@@ -233,8 +316,8 @@ def segment_customers():
                     "segment": row["segment"],
                     "churn_probability": float(row["churn_probability"])
                 }).eq("customer_id", int(row["customer_id"])).execute()
-            except Exception:
-                pass
+            except Exception as e:
+                logger.error(f"Supabase sync failed: {e}")
 
     conn.commit()
     conn.close()
@@ -249,9 +332,9 @@ def segment_customers():
 
 
 def generate_discount(customer_id: Any = None):
-    if customer_id is None:
-        return {"status": "error", "message": "MISSING customer_id"}
-    c_id = int(str(customer_id).split('-')[0]) if '-' in str(customer_id) else int(customer_id)
+    # Validate
+    req = GenerateDiscountRequest(customer_id=customer_id)
+    c_id = req.customer_id
     code = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
     DB.execute("UPDATE customers SET discount_code = ? WHERE customer_id = ?", (code, c_id))
     DB.execute(
@@ -262,9 +345,8 @@ def generate_discount(customer_id: Any = None):
 
 
 def flag_vip(customer_id: Any = None):
-    if customer_id is None:
-        return {"status": "error", "message": "MISSING customer_id"}
-    c_id = int(str(customer_id).split('-')[0]) if '-' in str(customer_id) else int(customer_id)
+    req = FlagVipRequest(customer_id=customer_id)
+    c_id = req.customer_id
     DB.execute("UPDATE customers SET vip_flag = ? WHERE customer_id = ?", (1, c_id))
     DB.execute(
         "INSERT INTO agent_logs (timestamp, tool_name, arguments, result) VALUES (?, ?, ?, ?)",
@@ -274,9 +356,10 @@ def flag_vip(customer_id: Any = None):
 
 
 def initiate_boardroom_debate(customer_id: Any):
-    df = DB.query(f"SELECT * FROM customers WHERE customer_id = {int(customer_id)}")
+    req = DebateRequest(customer_id=customer_id)
+    df = DB.query(f"SELECT * FROM customers WHERE customer_id = {req.customer_id}")
     if df.empty:
-        return {"error": "Customer not found"}
+        raise HTTPException(status_code=404, detail="Customer not found")
 
     row = df.iloc[0]
     churn_prob = float(row.get('churn_probability', 30))
@@ -286,16 +369,18 @@ def initiate_boardroom_debate(customer_id: Any):
 
     DB.execute(
         "INSERT INTO agent_logs (timestamp, tool_name, arguments, result) VALUES (?, ?, ?, ?)",
-        (datetime.now().isoformat(), "boardroom_debate", str(customer_id),
+        (datetime.now().isoformat(), "boardroom_debate", str(req.customer_id),
          f"{result.get('discount', 0)}% approved — {result.get('summary', '')[:80]}")
     )
     return result
 
 
 def draft_empathy_email(customer_id: Any, tone: str = "empathetic"):
+    req = EmailRequest(customer_id=customer_id, tone=tone)
+    df = DB.query(f"SELECT name FROM customers WHERE customer_id = {req.customer_id}")
+    name = df.iloc[0]['name'] if not df.empty else "Valued Customer"
+    
     if not GOOGLE_API_KEY:
-        df = DB.query(f"SELECT name FROM customers WHERE customer_id = {int(customer_id)}")
-        name = df.iloc[0]['name'] if not df.empty else "Valued Customer"
         return {
             "email_body": (
                 f"Dear {name},\n\nWe truly value your loyalty and the trust you've placed in us. "
@@ -309,10 +394,8 @@ def draft_empathy_email(customer_id: Any, tone: str = "empathetic"):
 
     from google import genai
     client = genai.Client(api_key=GOOGLE_API_KEY)
-    df = DB.query(f"SELECT name FROM customers WHERE customer_id = {int(customer_id)}")
-    name = df.iloc[0]['name'] if not df.empty else "Valued Customer"
     prompt = (
-        f"Write a professional and {tone} retention email to {name}. "
+        f"Write a professional and {req.tone} retention email to {name}. "
         f"Offer a special discount without using generic placeholders. "
         f"Mention appreciation for their loyalty. Keep it under 150 words."
     )
@@ -321,11 +404,13 @@ def draft_empathy_email(customer_id: Any, tone: str = "empathetic"):
 
 
 def trigger_macro_optimization(budget: float = 5000):
+    req = OptimizeRequest(budget=budget)
     df = DB.query("SELECT customer_id, churn_probability, TotalCharges FROM customers")
     if df.empty:
-        return {"error": "No customers found."}
+        raise HTTPException(status_code=404, detail="No customers found.")
+        
     from agent.decision_engine import DecisionEngine
-    allocated, total_spend = DecisionEngine.optimize_cohort_discounts(df, budget=budget)
+    allocated, total_spend = DecisionEngine.optimize_cohort_discounts(df, budget=req.budget)
 
     conn = sqlite3.connect(DB_PATH)
     cur = conn.cursor()
@@ -359,17 +444,21 @@ TOOLS_MAP = {
 # MCP HUB
 # =========================
 @app.post("/")
-async def mcp_hub(req: MCPRequest = Body(...)):
+async def mcp_hub(req: dict = Body(...)):
     try:
-        if req.method == "initialize":
-            return {"jsonrpc": "2.0", "id": req.id, "result": {
+        method = req.get("method", "")
+        req_id = req.get("id", 0)
+        
+        if method == "initialize":
+            return {"jsonrpc": "2.0", "id": req_id, "result": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {"tools": {}},
-                "serverInfo": {"name": "Retention-MCP-Server", "version": "2.0.0"}
+                "serverInfo": {"name": "Retention-MCP-Server", "version": MODEL_VERSION}
             }}
-        if req.method.startswith("notifications/"):
+        if method.startswith("notifications/"):
             return Response(status_code=204)
-        if req.method == "tools/list":
+            
+        if method == "tools/list":
             tools_list = [
                 {"name": "get_customers", "description": "Fetch all customers.", "inputSchema": {"type": "object"}},
                 {"name": "segment_customers", "description": "Run ML scoring and update segments.", "inputSchema": {"type": "object"}},
@@ -384,22 +473,29 @@ async def mcp_hub(req: MCPRequest = Body(...)):
                 {"name": "trigger_macro_optimization", "description": "Run SciPy SLSQP budget optimization across all customers.",
                  "inputSchema": {"type": "object", "properties": {"budget": {"type": "number"}}, "required": ["budget"]}},
             ]
-            return {"jsonrpc": "2.0", "id": req.id, "result": {"tools": tools_list}}
-        if req.method == "tools/call":
-            name = req.params.get("name")
-            args = req.params.get("arguments", {})
+            return {"jsonrpc": "2.0", "id": req_id, "result": {"tools": tools_list}}
+            
+        if method == "tools/call":
+            params = req.get("params", {})
+            name = params.get("name")
+            args = params.get("arguments", {})
+            
             if name in TOOLS_MAP:
-                sys.stdout.write(f"EXECUTING: {name}\n")
-                sys.stdout.flush()
+                logger.info(f"EXECUTING: {name} with args {args}")
                 res = TOOLS_MAP[name](**args)
-                return {"jsonrpc": "2.0", "id": req.id, "result": {
+                return {"jsonrpc": "2.0", "id": req_id, "result": {
                     "content": [{"type": "text", "text": json.dumps(safe_json(res))}],
                     "isError": False
                 }}
-        return {"jsonrpc": "2.0", "id": req.id, "error": {"code": -32601, "message": "Method not found"}}
+                
+        return {"jsonrpc": "2.0", "id": req_id, "error": {"code": -32601, "message": "Method not found"}}
+        
+    except HTTPException as he:
+        logger.warning(f"HTTP Exception: {he.detail}")
+        return {"jsonrpc": "2.0", "id": req.get("id", 0), "error": {"code": -32000, "message": str(he.detail)}}
     except Exception as e:
-        traceback.print_exc()
-        return {"jsonrpc": "2.0", "id": req.id, "error": {"code": -32000, "message": str(e)}}
+        logger.error(f"Internal Error: {traceback.format_exc()}")
+        return {"jsonrpc": "2.0", "id": req.get("id", 0), "error": {"code": -32000, "message": str(e)}}
 
 
 if __name__ == "__main__":
