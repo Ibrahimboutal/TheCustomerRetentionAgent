@@ -10,7 +10,15 @@
 [![FastAPI](https://img.shields.io/badge/MCP_Server-FastAPI-green.svg)](https://fastapi.tiangolo.com)
 [![Streamlit](https://img.shields.io/badge/Streamlit-UI-red.svg)](https://streamlit.io)
 
-This project is not just a predictive ML pipeline. It is a **decision-making agent** that uses Machine Learning and Constrained Optimization tools to execute real-world business strategies. By integrating via the Model Context Protocol (MCP), the agent actively reasons about customer churn, plans an intervention strategy, allocates budget, and executes actions.
+This project is not just a predictive ML pipeline. **Unlike typical agent demos, this system combines reasoning agents with mathematical optimization to execute cost-efficient decisions at scale.**
+
+## 🤖 Agent Overview
+
+The agent acts as a decision-maker that:
+- Plans retention strategy
+- Calls prediction & optimization tools
+- Executes budget allocation
+- Adapts to real-time events
 
 ---
 
@@ -29,18 +37,19 @@ Given a quarterly retention budget and a real-time stream of customer events, th
 
 The agent operates on a continuous, multi-step Reasoning and Action (ReAct) loop. This proves the system is capable of planning and multi-step execution, not just single-shot inference.
 
-1. **User Goal**: *"Optimize our Q3 retention strategy with a $5,000 budget."*
-2. **Agent Plans**: Identifies the need to pull the current customer cohort, score them, and run the optimization engine.
-3. **Calls Tools**: Triggers `segment_customers()` and `trigger_macro_optimization()` via its MCP Server.
-4. **Evaluates**: Reviews the simulated ROI and CPRC (Cost Per Retained Customer) returned by the tools.
-5. **Executes**: The agent executes the strategy by calling `generate_discount()` or `flag_vip()` for the targeted cohort.
-6. **Adjusts (Real-Time)**: If a `failed_payment` streaming event occurs, the agent immediately intercepts, re-scores the specific user, and triggers an out-of-band micro-action.
+1. **Observe** → Ingests customer events and CRM data.
+2. **Plan** → Determines the optimal retention strategy based on the given budget.
+3. **Act** → Calls ML and SciPy optimization tools via MCP.
+4. **Evaluate** → Checks budget constraints and expected ROI impact.
+5. **Adapt** → Re-adjusts decisions instantly when real-time streaming events (e.g., failed payments) occur.
 
 ---
 
 ## 🔧 Agent Toolset (via MCP)
 
-The agent does not contain ML algorithms inside its LLM brain. Instead, it relies on a robust suite of external, deterministic tools exposed over a FastAPI MCP (Model Context Protocol) server.
+The agent communicates with external tools via MCP (JSON-RPC), enabling modular integration with partner services and decision pipelines. 
+
+It does not contain ML algorithms inside its LLM brain. Instead, it relies on a robust suite of external, deterministic tools exposed over a FastAPI server.
 
 | Tool Name | Capability Provided to Agent | Underlying Engine |
 |-----------|------------------------------|-------------------|
@@ -92,10 +101,10 @@ flowchart TD
 ## ☁️ Google Cloud Integration
 
 This system is built from the ground up to leverage the Google Cloud ecosystem:
-- **Reasoning**: Powered by the **Gemini API** (`gemini-2.0-flash`) for rapid, cost-effective agent orchestration and multi-persona debates.
-- **Deployment**: Configured for containerized deployment on **Cloud Run** via the included `cloudbuild.yaml`.
-- **Event Streaming**: The `/stream/event` real-time endpoint is designed to be the direct subscriber for **Google Cloud Pub/Sub** topics.
-- **Scalability**: The modular architecture is fully compatible with **Vertex AI Agent Builder** extensions.
+- **Designed for Agent Builder orchestration** for scalable enterprise deployments.
+- **Deployable via Cloud Run** using the included production-grade containerization.
+- **Event pipeline compatible with Pub/Sub** to stream and react to live customer actions.
+- **LLM reasoning powered by Gemini**, utilizing `gemini-2.0-flash` for high-speed multi-agent debates.
 
 ---
 
