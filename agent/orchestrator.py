@@ -10,15 +10,27 @@ if BASE_DIR not in sys.path:
 
 from api import server
 
+# --- MCP TOOL DEFINITIONS ---
+def mcp_tool(func):
+    """Decorator to explicitly register a function as an MCP Tool."""
+    func.is_mcp_tool = True
+    return func
+
+@mcp_tool
 def predict_churn_and_segment() -> str:
+    print("☁️ [MCP] Agent invoking ML Churn model on Vertex AI / Local Engine...")
     res = server.segment_customers()
     return f"Segmentation completed. Summary: {res['summary']}"
 
+@mcp_tool
 def optimize_budget(budget: float) -> str:
+    print(f"☁️ [MCP] Agent calling cloud-hosted SciPy optimization service with budget: ${budget}...")
     res = server.trigger_macro_optimization(budget=float(budget))
     return f"Optimization completed. Budget used: ${res['budget_used']}, Customers optimized: {res['customers_optimized']}, Avg Discount: {res['avg_discount_pct']}%."
 
+@mcp_tool
 def generate_customer_discount(customer_id: int) -> str:
+    print(f"☁️ [MCP] Agent executing DB transaction for customer {customer_id}...")
     res = server.generate_discount(customer_id=int(customer_id))
     return res['msg']
 
@@ -42,18 +54,16 @@ class RetentionAgent:
             "generate_customer_discount": generate_customer_discount
         }
 
-    def execute_goal(self, goal: str) -> Dict[str, Any]:
-        """
-        Takes a natural language goal, executes the ReAct loop using tools, and returns the result and trace.
-        """
-        trace = []
-        trace.append({"role": "user", "content": goal})
-        
-        system_prompt = f"""You are an autonomous Customer Retention Agent. Your mission is to plan and execute retention strategies.
-You have the following tools available:
-1. predict_churn_and_segment() -> Runs the Machine Learning model to score all customers. No arguments.
+    def observe(self, goal: str) -> str:
+        return f"User Goal: {goal}"
+
+    def generate_plan(self, state: str) -> str:
+        # Initial ReAct prompt setup
+        return f"""You are an autonomous Customer Retention Agent. Your mission is to plan and execute retention strategies.
+You have the following MCP tools available:
+1. predict_churn_and_segment() -> Runs the ML model to score customers.
 2. optimize_budget(budget: float) -> Runs the SciPy SLSQP constrained optimization engine. Argument: 'budget'.
-3. generate_customer_discount(customer_id: int) -> Generates a discount code. Argument: 'customer_id'.
+3. generate_customer_discount(customer_id: int) -> Executes action in CRM. Argument: 'customer_id'.
 
 You must follow this loop:
 1. Plan.
@@ -66,85 +76,112 @@ To call a tool, you MUST output a JSON block exactly like this:
 {{"tool": "predict_churn_and_segment", "args": {{}}}}
 ```
 
-When you have finished all steps, output your final answer wrapped exactly like this:
+When finished, output your final answer wrapped exactly like this:
 <FINAL_ANSWER>
 Your detailed summary here.
 </FINAL_ANSWER>
 
-Do not output multiple tool calls at once. Output one tool call, wait for the result, then proceed.
-
-User Goal: {goal}
+{state}
 """
-        
-        chat = self.model.start_chat(history=[])
-        
-        current_prompt = system_prompt
+
+    def execute_tools(self, current_prompt: str, chat) -> Dict[str, Any]:
+        """Runs the ReAct execution loop handling the tool calling."""
+        trace = []
+        for step in range(8): # Max 8 steps in the loop
+            response = chat.send_message(current_prompt)
+            response_text = response.text
+            
+            # Check for final answer (evaluate)
+            final_match = re.search(r'<FINAL_ANSWER>(.*?)</FINAL_ANSWER>', response_text, re.DOTALL)
+            if final_match:
+                trace.append({"role": "agent_thought", "content": "Mission Complete."})
+                return {"status": "done", "result": final_match.group(1).strip(), "trace": trace}
+            
+            # Extract JSON tool call (act)
+            json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
+            if not json_match:
+                trace.append({"role": "agent_thought", "content": response_text})
+                current_prompt = "Please continue and output a tool call in JSON format or provide the <FINAL_ANSWER>."
+                continue
+                
+            tool_req = json.loads(json_match.group(1))
+            tool_name = tool_req.get("tool")
+            args = tool_req.get("args", {})
+            
+            trace.append({
+                "role": "agent_thought",
+                "content": response_text.split("```json")[0].strip()
+            })
+            
+            trace.append({
+                "role": "agent_tool_call",
+                "tool": tool_name,
+                "args": args
+            })
+            
+            if tool_name in self.tool_mapping:
+                try:
+                    tool_result = self.tool_mapping[tool_name](**args)
+                except Exception as e:
+                    tool_result = f"Error executing {tool_name}: {str(e)}"
+            else:
+                tool_result = f"Error: Tool {tool_name} not found."
+                
+            trace.append({
+                "role": "tool_result",
+                "tool": tool_name,
+                "content": str(tool_result)
+            })
+            
+            # Adapt & Re-plan
+            current_prompt = f"Tool '{tool_name}' returned:\n{tool_result}\n\nWhat is your next step?"
+            
+        return {"status": "max_steps", "result": "Max steps reached without concluding the mission.", "trace": trace}
+
+    def evaluate(self, execution_result: Dict[str, Any]) -> Dict[str, Any]:
+        return {
+            "status": "success" if execution_result["status"] == "done" else "error",
+            "final_answer": execution_result["result"],
+            "trace": execution_result["trace"]
+        }
+
+    def run_agent_mission(self, goal: str) -> Dict[str, Any]:
+        """
+        Explicit Agent Execution Loop (Observe -> Plan -> Act -> Evaluate -> Adapt).
+        """
+        trace_history = [{"role": "user", "content": goal}]
         
         try:
-            for step in range(8): # Max 8 steps in the loop
-                response = chat.send_message(current_prompt)
-                response_text = response.text
-                
-                # Check for final answer
-                final_match = re.search(r'<FINAL_ANSWER>(.*?)</FINAL_ANSWER>', response_text, re.DOTALL)
-                if final_match:
-                    trace.append({"role": "agent_thought", "content": "Mission Complete."})
-                    return {
-                        "status": "success",
-                        "final_answer": final_match.group(1).strip(),
-                        "trace": trace
-                    }
-                
-                # Extract JSON tool call
-                json_match = re.search(r'```json\s*(\{.*?\})\s*```', response_text, re.DOTALL)
-                if not json_match:
-                    trace.append({"role": "agent_thought", "content": response_text})
-                    current_prompt = "Please continue and output a tool call in JSON format or provide the <FINAL_ANSWER>."
-                    continue
-                    
-                tool_req = json.loads(json_match.group(1))
-                tool_name = tool_req.get("tool")
-                args = tool_req.get("args", {})
-                
-                trace.append({
-                    "role": "agent_thought",
-                    "content": response_text.split("```json")[0].strip()
-                })
-                
-                trace.append({
-                    "role": "agent_tool_call",
-                    "tool": tool_name,
-                    "args": args
-                })
-                
-                if tool_name in self.tool_mapping:
-                    try:
-                        tool_result = self.tool_mapping[tool_name](**args)
-                    except Exception as e:
-                        tool_result = f"Error executing {tool_name}: {str(e)}"
-                else:
-                    tool_result = f"Error: Tool {tool_name} not found."
-                    
-                trace.append({
-                    "role": "tool_result",
-                    "tool": tool_name,
-                    "content": str(tool_result)
-                })
-                
-                # Feed the result back into the prompt for the next loop iteration
-                current_prompt = f"Tool '{tool_name}' returned:\n{tool_result}\n\nWhat is your next step?"
-                
-            return {
-                "status": "success",
-                "final_answer": "Max steps reached without concluding the mission.",
-                "trace": trace
-            }
+            chat = self.model.start_chat(history=[])
+            
+            # 1. Observe
+            state = self.observe(goal)
+            
+            # 2. Plan
+            plan_prompt = self.generate_plan(state)
+            
+            # 3. Act & 4. Evaluate & 5. Adapt (handled inside execute_tools via ReAct)
+            actions_result = self.execute_tools(plan_prompt, chat)
+            
+            # Combine trace
+            trace_history.extend(actions_result.get("trace", []))
+            actions_result["trace"] = trace_history
+            
+            # Final Evaluation
+            final_result = self.evaluate(actions_result)
+            return final_result
+            
         except Exception as e:
             return {
                 "status": "error",
                 "message": str(e),
-                "trace": trace
+                "trace": trace_history
             }
+
+    def execute_goal(self, goal: str) -> Dict[str, Any]:
+        """Wrapper for API compatibility."""
+        return self.run_agent_mission(goal)
+
 
 if __name__ == "__main__":
     from dotenv import load_dotenv
