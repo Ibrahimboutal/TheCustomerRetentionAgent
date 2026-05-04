@@ -31,7 +31,7 @@ if BASE_DIR not in sys.path:
 from api.schemas import (
     EventStreamRequest, EventStreamResponse,
     GenerateDiscountRequest, FlagVipRequest, DebateRequest,
-    EmailRequest, OptimizeRequest
+    EmailRequest, OptimizeRequest, AgentExecuteRequest, AgentExecuteResponse
 )
 
 DB_PATH = os.path.join(BASE_DIR, "data", "mock_crm.db")
@@ -66,8 +66,6 @@ async def add_model_version_header(request: Request, call_next):
     response.headers["X-Model-Version"] = MODEL_VERSION
     return response
 
-class MCPRequest(from_pydantic:=True, **kwargs):
-    pass # Re-defined below inline to avoid NameError if pydantic v1 vs v2 issues. We just use dict.
 
 # =========================
 # DB LAYER
@@ -260,6 +258,27 @@ def handle_stream_event(req: EventStreamRequest):
     )
 
 # =========================
+# AUTONOMOUS AGENT ENDPOINT
+# =========================
+@app.post("/api/v1/agent/execute", response_model=AgentExecuteResponse)
+def execute_agent_goal(req: AgentExecuteRequest):
+    try:
+        from agent.orchestrator import RetentionAgent
+        agent = RetentionAgent()
+        res = agent.execute_goal(req.goal)
+        if res["status"] == "error":
+            raise HTTPException(status_code=500, detail=res.get("message"))
+            
+        return AgentExecuteResponse(
+            status=res["status"],
+            final_answer=res["final_answer"],
+            trace=res["trace"]
+        )
+    except Exception as e:
+        logger.error(f"Agent Execution Error: {traceback.format_exc()}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+# =========================
 # TOOLS
 # =========================
 def get_customers():
@@ -427,6 +446,7 @@ def trigger_macro_optimization(budget: float = 5000):
         "avg_discount_pct": round(np.mean([v['discount_pct'] for v in allocated.values()]), 1) if allocated else 0,
         "allocations": safe_json(allocated)
     }
+
 
 
 TOOLS_MAP = {

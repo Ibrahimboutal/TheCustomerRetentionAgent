@@ -62,3 +62,11 @@ class OptimizeResponse(BaseModel):
     customers_optimized: int
     avg_discount_pct: float
     allocations: Dict[str, Any]
+
+class AgentExecuteRequest(BaseModel):
+    goal: str
+
+class AgentExecuteResponse(BaseModel):
+    status: str
+    final_answer: str
+    trace: List[Dict[str, Any]]

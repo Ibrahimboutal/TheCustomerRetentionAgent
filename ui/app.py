@@ -565,13 +565,14 @@ with st.expander("🏗️ System Architecture — How the Agent Works", expanded
 # ════════════════════════════════════════════════════════════════════════════
 # TABS
 # ════════════════════════════════════════════════════════════════════════════
-tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
+tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs([
     "📊 Segmentation",
     "👥 Customers",
     "🔬 Cohort Analysis",
     "⚙️ Budget Optimizer",
     "📈 KPI Simulator",
     "🤖 Agent Debate",
+    "🧠 Agent Terminal",
 ])
 
 
@@ -1599,6 +1600,64 @@ with tab6:
             "run a debate or autonomous scan to populate the log.</div>",
             unsafe_allow_html=True
         )
+        
+
+# ═══ TAB 7 — AGENT TERMINAL ══════════════════════════════════════════════════
+with tab7:
+    st.markdown("<div class='section-title'>Autonomous Agent Terminal</div>", unsafe_allow_html=True)
+    st.markdown("Give the agent a high-level mission and watch it autonomously plan, invoke tools, and execute the strategy using a ReAct loop.")
+    
+    col_term1, col_term2 = st.columns([1, 1])
+    with col_term1:
+        st.markdown("**1. Enter Mission Objective**")
+        agent_goal = st.text_area("What should the agent do?", 
+                                  value="We have a $3000 budget. Please score the latest cohort and optimize the discount allocations.",
+                                  height=100)
+        
+        execute_btn = st.button("🚀 Execute Autonomous Mission", use_container_width=True)
+    
+    with col_term2:
+        st.markdown("**2. System Trace & Outputs**")
+        trace_placeholder = st.empty()
+        
+    if execute_btn:
+        if not GOOGLE_API_KEY:
+            st.error("Error: GOOGLE_API_KEY must be set in your .env file to run the Autonomous Agent.")
+        else:
+            trace_placeholder.info("Agent is planning and executing... (this may take up to 60 seconds)")
+            try:
+                import requests
+                # Connect to the FastAPI endpoint that handles the agent ReAct loop
+                resp = requests.post(f"{MCP_URL}api/v1/agent/execute", json={"goal": agent_goal}, timeout=120)
+                if resp.status_code == 200:
+                    data = resp.json()
+                    
+                    if data.get("status") == "error":
+                        st.error(f"Agent Execution Failed: {data.get('message')}")
+                        
+                    trace_html = "<div style='max-height: 400px; overflow-y: auto;'>"
+                    for step in data.get("trace", []):
+                        role = step.get("role", "unknown")
+                        if role == "user":
+                            trace_html += f"<div class='thought-stream' style='border-left-color: #C77DFF;'><span class='agent-tag' style='color:#C77DFF;'>[USER GOAL]</span> {step.get('content')}</div>"
+                        elif role == "agent_thought":
+                            trace_html += f"<div class='thought-stream' style='border-left-color: #00F5FF;'><span class='agent-tag' style='color:#00F5FF;'>[THOUGHT]</span> {step.get('content')}</div>"
+                        elif role == "agent_tool_call":
+                            trace_html += f"<div class='thought-stream' style='border-left-color: #FFD700;'><span class='agent-tag' style='color:#FFD700;'>[TOOL CALL]</span> <b>{step.get('tool')}</b>( {step.get('args')} )</div>"
+                        elif role == "tool_result":
+                            trace_html += f"<div class='thought-stream' style='border-left-color: #4DFF88;'><span class='agent-tag' style='color:#4DFF88;'>[TOOL RESULT]</span> {step.get('content')}</div>"
+                    trace_html += "</div>"
+                    
+                    trace_placeholder.markdown(trace_html, unsafe_allow_html=True)
+                    
+                    st.success("Mission Accomplished.")
+                    st.markdown("### Agent Final Answer")
+                    st.markdown(f"<div class='briefing-card'>{data.get('final_answer')}</div>", unsafe_allow_html=True)
+                    
+                else:
+                    st.error(f"Server Error {resp.status_code}: {resp.text}")
+            except Exception as e:
+                st.error(f"Failed to reach the Agent API: {str(e)}. Make sure the FastAPI server is running.")
 
 
 # ════════════════════════════════════════════════════════════════════════════
