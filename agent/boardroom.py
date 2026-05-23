@@ -6,6 +6,9 @@ from datetime import datetime
 from typing import Dict, Any, List
 
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+if GOOGLE_API_KEY == "your_gemini_api_key":
+    GOOGLE_API_KEY = None
+
 
 
 class BoardroomDebate:

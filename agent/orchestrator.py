@@ -41,6 +41,8 @@ class RetentionAgent:
     """
     def __init__(self):
         self.api_key = os.environ.get("GOOGLE_API_KEY")
+        if self.api_key == "your_gemini_api_key":
+            self.api_key = None
         if not self.api_key:
             raise ValueError("GOOGLE_API_KEY is not set. Cannot run Autonomous Agent.")
             

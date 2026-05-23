@@ -28,6 +28,9 @@ ML_DIR  = os.path.join(BASE_DIR, "ml")
 SUPABASE_URL = os.environ.get("SUPABASE_URL")
 SUPABASE_KEY = os.environ.get("SUPABASE_KEY")
 GOOGLE_API_KEY = os.environ.get("GOOGLE_API_KEY")
+if GOOGLE_API_KEY == "your_gemini_api_key":
+    GOOGLE_API_KEY = None
+
 
 MCP_URL = "http://127.0.0.1:8000/"
 
