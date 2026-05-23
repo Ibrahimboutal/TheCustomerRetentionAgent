@@ -9,6 +9,22 @@
 [![Gemini 2.0 Flash](https://img.shields.io/badge/Gemini-2.0_Flash-purple.svg)](https://ai.google.dev)
 [![FastAPI](https://img.shields.io/badge/MCP_Server-FastAPI-green.svg)](https://fastapi.tiangolo.com)
 [![Streamlit](https://img.shields.io/badge/Streamlit-UI-red.svg)](https://streamlit.io)
+[![Live App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://thecustomerretentionagent.streamlit.app)
+
+---
+
+## 🌐 Live App
+
+> **Try the agent right in your browser — no setup required.**
+
+👉 **[Launch the Live Demo →](https://thecustomerretentionagent.streamlit.app)**
+
+The live Streamlit app lets you:
+- 💬 Chat with the AI retention agent and set a quarterly budget goal
+- 📊 View real-time customer segmentation and churn risk scores
+- ⚙️ Trigger the SciPy budget optimizer and see allocation decisions
+- 📧 Watch the agent draft personalized retention actions (discounts, emails)
+- 🔄 Simulate streaming events (e.g., failed payments) and observe agent adaptation
 
 This project is not just a predictive ML pipeline. **Unlike typical agent demos, this system combines reasoning agents with mathematical optimization to execute cost-efficient decisions at scale.**
 
