@@ -17,7 +17,7 @@
 
 > **Try the agent right in your browser — no setup required.**
 
-👉 **[Launch the Live Demo →](https://httpsthecustomerretentionagent-mfolnnuynmwifgxuavdfmf.streamlit.app/)**
+👉 **[Launch the Live Demo →](https://thecustomerretentionagent-mfolnnuynmwifgxuavdfmf.streamlit.app/)**
 
 The live Streamlit app lets you:
 - 💬 Chat with the AI retention agent and set a quarterly budget goal
