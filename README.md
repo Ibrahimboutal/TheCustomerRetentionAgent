@@ -9,7 +9,7 @@
 [![Gemini 2.0 Flash](https://img.shields.io/badge/Gemini-2.0_Flash-purple.svg)](https://ai.google.dev)
 [![FastAPI](https://img.shields.io/badge/MCP_Server-FastAPI-green.svg)](https://fastapi.tiangolo.com)
 [![Streamlit](https://img.shields.io/badge/Streamlit-UI-red.svg)](https://streamlit.io)
-[![Live App](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://thecustomerretentionagent-mfolnnuynmwifgxuavdfmf.streamlit.app/)
+[![Live App](https://img.shields.io/badge/Live_App-Streamlit-FF4B4B?logo=streamlit&logoColor=white)](https://thecustomerretentionagent-mfolnnuynmwifgxuavdfmf.streamlit.app/)
 
 ---
 
